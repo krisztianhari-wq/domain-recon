@@ -29,11 +29,25 @@ Minden eredmény listázható, szűrhető (host/IP/szolgáltatás), és **CSV/JS
 
 Alapból **csak publikus IP-t** szkennel (`allow_private` kapcsolja be a belső tartományokat is).
 
-## Helyi futtatás
+## Mac-alkalmazás (helyi, telepíthető)
+
+A domain-recon futhat a saját gépeden önálló `.app`-ként — ilyenkor a **te géped a mérőpont**
+(nincs megosztott szerver-IP), és az adat a `~/Library/Application Support/domain-recon` mappába kerül.
+
+- **Kész `.app`:** a GitHub **Releases** / **Actions** oldalról (macOS arm64 és Intel). Kibontás után
+  első indításkor: jobbklikk → *Megnyitás* (aláíratlan build). Böngészőablakban nyílik meg.
+- **Építés helyben:**
+  ```bash
+  ./build-mac.sh          # eredmény: dist/domain-recon.app
+  ```
+- **Építés nélkül, dupla kattintással:** a Finderben a **`run-mac.command`** (első indításkor létrehozza a
+  virtuális környezetet, majd böngészőt nyit).
+
+## Helyi futtatás (fejlesztői)
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-.venv/bin/uvicorn app.main:app --port 8795
+.venv/bin/uvicorn app.main:app --port 8795      # vagy: .venv/bin/python -m app.desktop
 ```
 
 Parancssorból, webszerver nélkül:

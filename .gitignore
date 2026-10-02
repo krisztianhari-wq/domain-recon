@@ -8,3 +8,7 @@ data/
 secrets/
 .DS_Store
 .claude/
+build/
+dist/
+*.spec
+out/
