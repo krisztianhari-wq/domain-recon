@@ -306,6 +306,7 @@ $$(".langs button").forEach(b => b.addEventListener("click", () => { setLang(b.d
 $("#theme").addEventListener("click", () => { const r = document.documentElement, n = r.dataset.theme === "light" ? "dark" : "light"; r.dataset.theme = n; try { localStorage.setItem("theme", n); } catch (e) { /* no-op */ } });
 
 applyStatic();
+(async () => { try { const v = await (await fetch("/api/version", {cache: "no-store"})).json(); $("#ver").textContent = "v" + v.version + (v.build ? " · " + v.build : ""); } catch (e) { /* no-op */ } })();
 loadHistory();
 const h = location.hash.replace("#", "");
 if (/^[0-9a-f]{16}$/.test(h)) openScan(h);

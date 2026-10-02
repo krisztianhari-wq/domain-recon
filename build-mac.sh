@@ -15,6 +15,7 @@ ARGS=(--noconfirm --clean --name "$NAME" --windowed
       --add-data "app/static:app/static"
       --hidden-import app.main --hidden-import app.engine --hidden-import app.fingerprint
       --hidden-import app.ports --hidden-import app.db --hidden-import app.netchecks
+      --hidden-import app.sources --hidden-import app.enrich --hidden-import app.vulncheck
       --hidden-import uvicorn.loops.auto --hidden-import uvicorn.protocols.http.auto
       --hidden-import uvicorn.protocols.websockets.auto --hidden-import uvicorn.lifespan.on)
 case "$(uname -s)" in

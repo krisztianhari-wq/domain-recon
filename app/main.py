@@ -19,12 +19,27 @@ from fastapi import Body, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import engine
+from . import __version__, engine
 from .db import DB
 from .ports import resolve_profile
 
 HERE = os.path.dirname(__file__)
 STATIC = os.path.join(HERE, "static")
+
+
+def _build_stamp() -> str:
+    """Build-bélyeg a telepített verzió követéséhez: RECON_BUILD env vagy app/BUILD fájl."""
+    b = os.getenv("RECON_BUILD", "").strip()
+    if b:
+        return b
+    try:
+        with open(os.path.join(HERE, "BUILD"), encoding="utf-8") as fh:
+            return fh.read().strip()
+    except OSError:
+        return ""
+
+
+BUILD = _build_stamp()
 DATA = os.getenv("RECON_DATA", os.path.join(os.path.dirname(HERE), "data"))
 ALLOWED = [h.strip() for h in os.getenv("RECON_ALLOWED_HOSTS", "").split(",") if h.strip()]
 MAX_SCANS = int(os.getenv("RECON_MAX_CONCURRENCY", "2"))
@@ -88,6 +103,11 @@ async def graph():
 @app.get("/healthz")
 async def healthz():
     return PlainTextResponse("ok")
+
+
+@app.get("/api/version")
+async def api_version():
+    return {"version": __version__, "build": BUILD}
 
 
 @app.get("/robots.txt")
