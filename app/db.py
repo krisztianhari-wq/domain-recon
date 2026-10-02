@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS scans(
   opts      TEXT NOT NULL,
   status    TEXT NOT NULL,          -- queued|running|done|error|canceled
   stage     TEXT,
+  note      TEXT,                   -- nem-fatális figyelmeztetés (pl. host-korlát miatti csonkolás)
   done      INTEGER DEFAULT 0,
   total     INTEGER DEFAULT 0,
   error     TEXT,
@@ -57,6 +58,8 @@ class DB:
         )
         self._cx.commit()
 
+    _STATUS_COLS = {"stage", "done", "total", "error", "n_hosts", "n_live", "n_ports", "started", "finished", "note"}
+
     def set_status(self, scan_id: str, status: str, **fields) -> None:
         cols, vals = ["status"], [status]
         if status == "running" and "started" not in fields:
@@ -64,10 +67,16 @@ class DB:
         if status in ("done", "error", "canceled"):
             fields["finished"] = int(time.time())
         for k, v in fields.items():
+            if k not in self._STATUS_COLS:            # fehérlista: csak ismert oszlopnév kerülhet a SQL-be
+                raise ValueError(f"ismeretlen oszlop: {k}")
             cols.append(k)
             vals.append(v)
         vals.append(scan_id)
         self._cx.execute(f"UPDATE scans SET {','.join(c+'=?' for c in cols)} WHERE id=?", vals)
+        self._cx.commit()
+
+    def set_note(self, scan_id: str, note: str) -> None:
+        self._cx.execute("UPDATE scans SET note=? WHERE id=?", (note, scan_id))
         self._cx.commit()
 
     def set_progress(self, scan_id: str, stage: str, done: int, total: int) -> None:

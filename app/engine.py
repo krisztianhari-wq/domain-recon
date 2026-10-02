@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
+import os
 import socket
 import time
 
@@ -56,6 +57,21 @@ def is_public(ip: str) -> bool:
     return a.is_global and not a.is_multicast
 
 
+def scannable(ip: str, allow_private: bool) -> bool:
+    """Szabad-e szkennelni ezt az IP-t. A loopback/link-local/metadata (169.254.x, pl. felhő-metaadat),
+    unspecified, reserved, multicast SOHA – még allow_private esetén sem (SSRF-eszkaláció ellen).
+    Privát tartományok (RFC1918 stb.) csak explicit allow_private mellett."""
+    try:
+        a = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    if a.is_loopback or a.is_link_local or a.is_unspecified or a.is_reserved or a.is_multicast:
+        return False
+    if a.is_global:
+        return True
+    return allow_private
+
+
 class Cancelled(Exception):
     pass
 
@@ -76,6 +92,8 @@ class Engine:
         self._ip_ports: dict[str, list[int]] = {}   # IP → nyitott portok (cache, egy IP-t egyszer szkennelünk)
         self._canceled = False
         self._n_cand = 0
+        self.max_hosts = int(os.getenv("RECON_MAX_HOSTS", "750"))        # felső korlát a feltérképezett hostokra
+        self._gsem = asyncio.Semaphore(int(os.getenv("RECON_MAX_SOCKETS", "512")))  # globális egyidejű TCP-kapcsolat-korlát
 
     def _check(self):
         if self._canceled:
@@ -162,7 +180,7 @@ class Engine:
     # ---------------- 3) portscan + ujjlenyomat ----------------
     async def scan_hosts(self, resolved: dict[str, dict]):
         targets = [(h, i) for h, i in resolved.items()
-                   if (i["public_ips"] or (self.allow_private and i["ips"]))]
+                   if any(scannable(ip, self.allow_private) for ip in i["ips"])]
         total = len(targets)
         self.db.set_progress(self.id, "scan", 0, total)
         sem = asyncio.Semaphore(self.hc)
@@ -174,7 +192,7 @@ class Engine:
             nonlocal done, port_total
             async with sem:
                 self._check()
-                scan_ips = info["public_ips"] if not self.allow_private else info["ips"]
+                scan_ips = [ip for ip in info["ips"] if scannable(ip, self.allow_private)]
                 ports_out = await self._scan_host(host, scan_ips)
                 rec = {"source": "ct/seed", **info, "ports": ports_out,
                        "alive": bool(info["ips"]), "scanned": True}
@@ -208,7 +226,7 @@ class Engine:
         fsem = asyncio.Semaphore(min(self.pc, 6))
 
         async def one(p: int):
-            async with fsem:
+            async with fsem, self._gsem:
                 self._check()
                 info = await fp.fingerprint(host, ip, p, timeout=self.ftimeout)
                 info["name"] = svc(p)
@@ -224,7 +242,7 @@ class Engine:
         found: list[int] = []
 
         async def probe(port: int):
-            async with sem:
+            async with sem, self._gsem:
                 self._check()
                 ok, _ = await nc.tcp_check(ip, port, self.ptimeout)
                 if ok:
@@ -239,6 +257,9 @@ class Engine:
         try:
             async with httpx.AsyncClient(headers={"User-Agent": UA}, follow_redirects=False) as client:
                 cand = sorted(await self.enumerate(client))
+                if len(cand) > self.max_hosts:
+                    self.db.set_note(self.id, f"{len(cand)} jelölt host → az első {self.max_hosts} feldolgozva (RECON_MAX_HOSTS).")
+                    cand = cand[:self.max_hosts]
                 self._n_cand = len(cand)
                 self.db.set_counts(self.id, len(cand), 0, 0)
                 resolved = await self.resolve_all(cand)

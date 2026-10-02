@@ -63,6 +63,9 @@ async function tick() {
   try { s = await (await fetch(`/api/scan/${current}`, {cache: "no-store"})).json(); }
   catch (e) { return; }
   renderProgress(s);
+  const note = $("#scannote");
+  note.textContent = s.note || "";
+  note.classList.toggle("hide", !s.note);
   hosts = s.hosts || [];
   renderStats(s);
   renderHosts();

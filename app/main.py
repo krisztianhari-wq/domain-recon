@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import csv
+import hmac
 import io
 import json
 import os
@@ -29,6 +30,7 @@ ALLOWED = [h.strip() for h in os.getenv("RECON_ALLOWED_HOSTS", "").split(",") if
 MAX_SCANS = int(os.getenv("RECON_MAX_CONCURRENCY", "2"))
 KEEP = int(os.getenv("RECON_KEEP", "60"))
 MAX_BODY = 4096
+PROXY_SECRET = os.getenv("RECON_PROXY_SECRET", "")   # ha be van állítva, csak a Caddy X-Recon-Proxy fejlécét fogadjuk el
 
 HOST_RE = re.compile(r"^(?=.{1,253}$)(?!-)[A-Za-z0-9-]{1,63}(?<!-)(\.(?!-)[A-Za-z0-9-]{1,63}(?<!-))+$")
 
@@ -48,6 +50,10 @@ SEC_HEADERS = {
 
 @app.middleware("http")
 async def guard(request: Request, call_next):
+    # mélységi védelem: csak a fordított proxy (Caddy) közös titkát hordozó kérés megy át (a /healthz kivételével)
+    if PROXY_SECRET and request.url.path != "/healthz":
+        if not hmac.compare_digest(request.headers.get("x-recon-proxy", ""), PROXY_SECRET):
+            return PlainTextResponse("forbidden", status_code=403)
     # Host-fejléc ellenőrzés (ha konfigurálva)
     if ALLOWED:
         host = (request.headers.get("host") or "").split(":")[0]
@@ -82,7 +88,7 @@ async def robots():
 
 
 def _norm_domain(raw: str) -> str:
-    d = (raw or "").strip().lower().rstrip(".")
+    d = (raw or "").strip().lower().rstrip(".")[:253]   # hosszkorlát a regex előtt (ReDoS-védelem)
     d = re.sub(r"^https?://", "", d)
     d = d.split("/")[0].split(":")[0]
     try:
@@ -161,6 +167,14 @@ async def api_export_json(scan_id: str):
                     headers={"Content-Disposition": f'attachment; filename="recon_{s["domain"]}_{scan_id}.json"'})
 
 
+def _csv_safe(v) -> str:
+    """CSV-képletinjekció ellen: a =,+,-,@ (és vezető tab/CR) kezdetű cellát aposztróffal semlegesítjük."""
+    s = "" if v is None else str(v)
+    if s and s[0] in "=+-@\t\r":
+        return "'" + s
+    return s
+
+
 @app.get("/api/export/{scan_id}.csv")
 async def api_export_csv(scan_id: str):
     s = db.get_scan(scan_id)
@@ -176,11 +190,12 @@ async def api_export_csv(scan_id: str):
             for p in h["ports"]:
                 http = p.get("http") or {}
                 tls = p.get("tls") or {}
-                w.writerow([h["host"], "yes" if h.get("alive") else "no", ips, h.get("cname") or "",
-                            p["port"], p.get("name", ""), http.get("status", ""), http.get("server", ""),
-                            http.get("title", ""), tls.get("cn", ""), (p.get("banner") or "")[:120]])
+                w.writerow([_csv_safe(x) for x in [
+                    h["host"], "yes" if h.get("alive") else "no", ips, h.get("cname") or "",
+                    p["port"], p.get("name", ""), http.get("status", ""), http.get("server", ""),
+                    http.get("title", ""), tls.get("cn", ""), (p.get("banner") or "")[:120]]])
         else:
-            w.writerow([h["host"], "yes" if h.get("alive") else "no", ips, h.get("cname") or "",
-                        "", "", "", "", "", "", ""])
+            w.writerow([_csv_safe(x) for x in [
+                h["host"], "yes" if h.get("alive") else "no", ips, h.get("cname") or "", "", "", "", "", "", "", ""]])
     return Response(buf.getvalue(), media_type="text/csv",
                     headers={"Content-Disposition": f'attachment; filename="recon_{s["domain"]}_{scan_id}.csv"'})
