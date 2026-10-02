@@ -30,19 +30,24 @@ jobs:
         include:
           - { os: macos-14,       label: macos-arm64 }
           - { os: macos-15-intel, label: macos-x86_64 }
+          - { os: windows-latest, label: windows-x64 }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
-      - name: Build .app
+      - name: Build
         shell: bash
-        run: ./build-mac.sh
+        run: ./build.sh
       - name: Package
         shell: bash
         run: |
           mkdir -p out
-          ditto -c -k --keepParent "dist/domain-recon.app" "out/domain-recon-${{ matrix.label }}.zip"
+          case "${{ matrix.os }}" in
+            macos*)   ditto -c -k --keepParent "dist/domain-recon.app" "out/domain-recon-${{ matrix.label }}.zip" ;;
+            windows*) 7z a -tzip "out/domain-recon-${{ matrix.label }}.zip" ./dist/domain-recon >/dev/null ;;
+            *)        tar -C dist -czf "out/domain-recon-${{ matrix.label }}.tar.gz" domain-recon ;;
+          esac
           ls -la out
       - uses: actions/upload-artifact@v4
         with:

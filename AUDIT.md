@@ -1,71 +1,66 @@
-# Biztonsági audit – domain-recon (v0.1), 2026-10-02
+# Security self-assessment — domain-recon
 
-**Hatókör:** a domain-recon eszköz saját támadási felülete — a FastAPI-app, a vizsgálómotor, a Docker-image,
-a compose-szolgáltatás, a Caddy-blokk és a telepítő scriptek a sadrobot OVH VPS-en, **passkey (oauth2-proxy) mögött**.
-**Módszer:** kódátnézés (fenyegetésmodell: hitelesített, de a határokat feszegető felhasználó; rosszindulatú
-*beszkennelt* célpont; kompromittált konténer; saját infra elleni erőforrás-visszaélés), `pip-audit`, `bandit`,
-helyi támadási próbák (XSS a bannerben/HTML-címben, CSV-képletinjekció, SSRF/metaadat, ReDoS, nagy/lassú válasz),
-valamint a konfig-patch próbája az **élő** compose/Caddyfile másolatán.
+**Scope:** the tool's own attack surface — the FastAPI app, the scan engine, the port/service
+catalogue, the request handling and the output/export paths. **Method:** code review (threat model:
+an authenticated but boundary-pushing user; a malicious *scanned* target; a compromised container;
+resource abuse against the host it runs on), `pip-audit`, `bandit`, and local attack probes (stored
+XSS via banners/HTML titles, CSV formula injection, SSRF / cloud-metadata, ReDoS, large/slow responses).
 
-> Ez az eszköz természeténél fogva **aktív felderítő** (aldomén-felsorolás, DNS, portscan). A cél itt nem a felderítés
-> „ártalmatlanítása", hanem hogy az eszköz **ne legyen visszaélhető a futtatóval vagy a saját infrával szemben**, és
-> csak a hitelesített felhasználó, csak engedélyezett célpontra használhassa.
+> This is by nature an **active reconnaissance** tool (subdomain enumeration, DNS, port scanning). The
+> goal here is not to neuter reconnaissance, but to make sure the tool **cannot be turned against the
+> operator or the host it runs on**, and that only an authorised operator can drive it against a target.
 
-## Eredmény röviden
-Kritikus vagy magas súlyú nyitott hiba nincs. 5 problémát javítottam a telepítés előtt, és a felületet
-több rétegben védtem (passkey + dedikált háló + proxy-titok). 3 maradék kockázat tudatos, dokumentált döntés.
+## Summary
+No critical or high open issues. Five issues were fixed, and the surface is defended in depth
+(authentication at the proxy + a dedicated network + an optional proxy secret). Three residual risks are
+conscious, documented choices.
 
-## Javított problémák
-| # | Súly | Probléma | Javítás | Ellenőrzés |
-|---|---|---|---|---|
-| 1 | Közepes | **CSV-képletinjekció**: a beszkennelt szerverek bannerei/HTML-címei felhasználható szövegek; `=`/`+`/`-`/`@` kezdetű cella Excelben képletként futna (adatszivárgás, parancs). | `_csv_safe()` minden exportált cellát aposztróffal semlegesít, ha veszélyes karakterrel kezdődik. | `_csv_safe('=cmd')` → `'=cmd` |
-| 2 | Közepes | **SSRF-eszkaláció `allow_private` esetén**: a privát IP engedélyezése mellett a loopback és a **link-local / felhő-metaadat `169.254.169.254`** is szkennelhető lett volna. | `scannable()`: loopback/link-local/unspecified/reserved/multicast **soha** (allow_private mellett sem); RFC1918 csak explicit engedéllyel; globális mindig. | `169.254.169.254`, `127.0.0.1`, `::1` → kizárva |
-| 3 | Közepes | **Saját infra DoS**: egy nagy domain CT-naplója több ezer hostot adhat; `full`+`aggressive` scan kimerítené a 3,7 GB-os VPS-t (FD, memória, CPU). | host-plafon (`RECON_MAX_HOSTS`, alap 750) + **globális socket-szemafor** (`RECON_MAX_SOCKETS`, alap 512) az összes egyidejű TCP-kapcsolatra; egyidejű vizsgálatok korlátja (`RECON_MAX_CONCURRENCY`, alap 2). | csonkolás a „note" mezőben jelezve |
-| 4 | Alacsony | **ReDoS** a domain-regexen hosszú, pontozás nélküli bemenetre. | a bemenet 253 karakterre vágva a minta előtt; a kéréstörzs 4 KB-ra korlátozva. | hosszú bemenet → gyors elutasítás |
-| 5 | Alacsony | **Dinamikus SQL** oszlopnevek (`set_status`). | oszlopnév-**fehérlista**; az értékek eddig is paraméterezve (`?`). | ismeretlen oszlop → `ValueError` |
-
-## Többrétegű hozzáférés-védelem (élesben)
-- **Passkey:** a `recon.sadrobot.eu` a közös **oauth2-proxy + Pocket ID** mögött (saját `_recon_auth` süti, saját
-  `emails-recon.txt` engedélylista) — csak a felvett e-mail-cím(ek) léphetnek be. Jelszó nincs, csak passkey.
-- **Dedikált háló:** a konténer a `recon_net` hálózaton van, **kizárólag a Caddy éri el**; publikált port nincs.
-- **Proxy-titok (mélységi védelem):** ha `RECON_PROXY_SECRET` be van állítva, az app csak a Caddy által injektált
-  `X-Recon-Proxy` fejlécet fogadja el (`hmac.compare_digest`); a `/healthz` kivétel. Így a konténer közvetlenül
-  (a proxy megkerülésével) sem hívható.
-
-## További ellenőrzött pontok, hiba nélkül
-- **XSS (tárolt, beszkennelt tartalomból):** a rosszindulatú szerver HTML-`<title>`-je, `Server`-fejléce, SSH/SMTP
-  bannere és a TLS CN/SAN mind **támadó-vezérelt**. Minden ilyen a kliensen `esc()`-en megy át (`& < > " '`), és a
-  **CSP `script-src 'self'`** miatt beágyazott szkript akkor sem futna, ha egy érték átcsúszna. A `style-src` a
-  dinamikus sávok miatt `'unsafe-inline'` — ez nem ad szkriptfuttatást.
-- **SSRF a vizsgálaton kívül:** az app kimenő kérései a certspotter CT-API és a DNS-resolverek felé mennek (fix,
-  megbízható célok); a felhasználói bemenet csak a *vizsgálat* célját adja, amit a `scannable()` szűr.
-- **DNS-válasz feldolgozása:** a saját UDP-DNS-parszer név-tömörítésnél mélységkorláttal véd a végtelen hurok ellen;
-  a hibás válasz resolverenként `try/except`-tel elnyelve. (A `random` DNS-txid nem kriptográfiai célú — elfogadható.)
-- **SQL-injekció:** minden lekérdezés paraméterezett; a `bandit` B608 jelzése a `set_status` f-stringjére a
-  fehérlista miatt bizonyítottan ártalmatlan (felhasználói bemenet nincs az oszlopnevekben).
-- **Metódus/Host:** nem GET/HEAD/POST/DELETE út nincs; `RECON_ALLOWED_HOSTS` (élesben a hoszt) szűri a `Host`-fejlécet;
-  `/openapi.json`, docs, redoc kikapcsolva (404).
-- **Erőforrás a válaszoldalon:** a banner-olvasás 512 B, a HTTP-ujjlenyomat 64 KB, rövid időtúllépésekkel; egy IP-t
-  **egyszer** szkennel (közös IP-jű aldoméneknél is).
-- **Függőségek:** `pip-audit` — nincs ismert sebezhetőség a rögzített verziókban (fastapi 0.142.2, starlette 1.7.0,
-  uvicorn 0.54.0, httpx 0.28.1 stb.).
-- **bandit:** 0 magas; 1 közepes (B608, fent kezelve); 10 alacsony (7× `try/except/pass` és 1× `continue` a
-  hálózati feldolgozás robosztusságához, 2× `random` nem-kripto célra) — egyik sem biztonsági hiba.
-- **Konténer:** `python:3.12.14-slim-trixie` rögzített verzió, uid 10008 (nem root), nologin; a pip a build után
-  törölve, az `/app` írásvédett; `cap_drop: [ALL]`; a TCP-connect portscanhez **nem kell** `NET_RAW`. A `/data`
-  jogosultsága 0700. Nincs publikált port, Docker-socket nincs becsatolva.
-- **Telepítés:** a patch-script idempotens, időbélyeges mentést készít az élő compose/Caddyfile-ról, és **csak a saját
-  sorait** érinti; a Caddyfile-t `validate`-eli, és `up -d caddy`-t használ (nem `restart`).
-
-## Maradék kockázatok – tudatos döntés
-| # | Súly | Kockázat | Javaslat / állapot |
+## Fixed before release
+| # | Severity | Issue | Fix |
 |---|---|---|---|
-| A | Közepes | **A VPS mint mérőpont**: minden scan forrás-IP-je `57.131.194.122`. Egy agresszív/teljes scan a célponton látszik, és a sadrobot-IP reputációját terhelheti (panasz, feketelista). | Alap a `polite`; az engedély a futtató felelőssége (UI/README/LICENSE jelzi). Igény esetén külön, eldobható mérőpont-IP. |
-| B | Alacsony | **Belső felderítés `allow_private`-tal**: bekapcsolva a konténer a saját `recon_net`-jén kívülre nem lát ugyan, de a VPS publikus IP-jén nyitott portjait feltérképezheti. | Alapból KI; a loopback/metaadat már tiltva. Elfogadható egyszemélyes, hitelesített eszköznél. |
-| C | Alacsony | **Adattárolás**: az eredmények (hostnevek, IP-k, bannerek) 60 vizsgálatig megőrződnek a konténer `/data`-jában. | 0700 jogosultság, passkey mögött; igény esetén rövidebb megőrzés vagy titkosított kötet. |
+| 1 | Medium | **CSV formula injection**: scanned servers' banners/HTML titles are attacker-controlled; a cell starting with `=`/`+`/`-`/`@` would execute as a formula in a spreadsheet. | `_csv_safe()` prefixes any dangerous cell with an apostrophe. |
+| 2 | Medium | **SSRF escalation with `allow_private`**: enabling private IPs would also allow scanning loopback and **link-local / cloud-metadata `169.254.169.254`**. | `scannable()` never allows loopback/link-local/unspecified/reserved/multicast (even with `allow_private`); RFC1918 only with explicit opt-in; global always. |
+| 3 | Medium | **Host-resource exhaustion**: a large domain's CT history can yield thousands of hosts; a `full` + `aggressive` scan could exhaust file descriptors / memory / CPU. | host cap (`RECON_MAX_HOSTS`, default 750) + a **global socket semaphore** (`RECON_MAX_SOCKETS`, default 512) bounding all concurrent TCP connections; concurrent-scan cap (`RECON_MAX_CONCURRENCY`, default 2). |
+| 4 | Low | **ReDoS** on the domain regex for a long, dot-less input. | input is truncated to 253 chars before matching; request body capped at 4 KB. |
+| 5 | Low | **Dynamic SQL** column names in `set_status`. | column-name **allow-list**; values were already parameterised. |
 
-## Telepítés előtti állapot
-A fenti 5 javítás a kódban van (`app/main.py`, `app/engine.py`, `app/db.py`), a hozzáférés-védelem a compose/Caddy
-patch-ben. `pip-audit` tiszta, `bandit` magas 0. Az eszköz telepíthető a passkey mögé.
+## Defence in depth (when hosted)
+- **Authentication:** the web UI is meant to sit behind a reverse proxy that enforces authentication; the
+  app ships with no built-in auth and should not be exposed directly.
+- **Isolation:** run it on a network where only the proxy can reach it; do not publish the container port.
+- **Proxy secret (optional):** if `RECON_PROXY_SECRET` is set, the app only accepts requests carrying the
+  matching `X-Recon-Proxy` header (constant-time compare); `/healthz` is exempt. This blocks direct access
+  even if the proxy is bypassed.
 
-sadrobot · domain-recon · biztonsági audit
+## Reviewed, no issue
+- **Stored XSS (from scanned content):** a malicious server's HTML `<title>`, `Server` header, SSH/SMTP
+  banner and TLS CN/SAN are all attacker-controlled. Every such value is HTML-escaped client-side, and the
+  strict **CSP (`script-src 'self'`)** would stop any injected script even if a value slipped through. The
+  `style-src` relaxation (`'unsafe-inline'`, for dynamic bars) grants no script execution.
+- **Outbound SSRF beyond scanning:** the app's own outbound calls go to fixed, trusted endpoints (the
+  CT/passive-DNS sources and DNS resolvers); user input only selects the *scan target*, which `scannable()`
+  filters.
+- **DNS parsing:** the custom UDP DNS client bounds name-compression depth against loops; malformed replies
+  are swallowed per resolver.
+- **SQL injection:** all queries are parameterised; `bandit`'s B608 note on the `set_status` f-string is
+  provably harmless given the column allow-list (no user input in column names).
+- **Methods / Host:** only GET/HEAD/POST/DELETE routes exist; `RECON_ALLOWED_HOSTS` filters the `Host`
+  header; `/openapi.json`, docs and redoc are disabled.
+- **Response-side resource use:** banner reads capped at 512 B, HTTP fingerprint at 64 KB, with short
+  timeouts; each IP is scanned **once** (even when many subdomains share it).
+- **Dependencies:** `pip-audit` — no known vulnerabilities in the pinned versions (fastapi, starlette,
+  uvicorn, httpx, …). **bandit:** 0 high; 1 medium (B608, handled above); the lows are robustness
+  `try/except` blocks in network parsing and non-crypto `random` use.
+- **Container:** pinned `python:3.12-slim` base, non-root uid, nologin shell; pip removed after build;
+  read-only app tree; `cap_drop: [ALL]`; the TCP-connect port scan needs **no** `NET_RAW`; data directory
+  `0700`; no published port and no Docker socket mounted.
+
+## Residual risks — conscious choices
+| # | Severity | Risk | Note |
+|---|---|---|---|
+| A | Medium | **The host as a vantage point**: every scan's source IP is the host's. An aggressive/full scan is visible on the target and can affect the host IP's reputation. | Default is `polite`; authorisation is the operator's responsibility (surfaced in the UI/README/LICENSE). |
+| B | Low | **Internal recon with `allow_private`**: when enabled, the scanner can map the host's own exposed ports. | Off by default; loopback/metadata always excluded. Acceptable for a single-user, authenticated tool. |
+| C | Low | **Data retention**: results (hostnames, IPs, banners) are kept for a bounded number of scans in the data directory. | `0700` permissions; shorter retention or an encrypted volume on request. |
+
+---
+sadrobot · domain-recon · security self-assessment

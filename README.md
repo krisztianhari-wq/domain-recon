@@ -1,85 +1,110 @@
 # domain-recon
 
-Írj be egy domaint — a **domain-recon** felsorolja az aldoméneket, feloldja a hostokat
-(élő / nem élő), feltérképezi a nyitott portokat és a szolgáltatásokat, és listát ad róluk.
-FastAPI + SQLite, sadrobot-arculatú dashboard, HU/EN, sötét/világos téma.
+Type in a domain — **domain-recon** enumerates its subdomains, resolves the hosts
+(live / dead), maps open ports and services, and gives you a clean, filterable list.
+FastAPI + SQLite, a sadrobot-styled dashboard, HU/EN, light/dark theme, a relationship
+graph, and standalone desktop apps for macOS and Windows.
 
-> ⚠️ **Csak olyan célpontot vizsgálj, amelyhez van engedélyed.** A port-feltérképezés — különösen a
-> teljes (1–65535) scan — aktív, a célponton látható művelet. A felelősség a futtatóé.
+> ⚠️ **Only scan targets you are authorised to.** Port scanning — especially the full
+> (1–65535) scan — is an active operation that is visible on the target. The active phase
+> must be started explicitly; the responsibility for running it is yours.
 
-## Mit csinál
+## Two phases
 
-1. **Felsorolás (enumerate)** — aldomének a **certspotter CT-naplóból** (passzív), plusz az apex;
-   opcionálisan egy kis **prefix-szótár** (www, api, mail, dev, …) DNS-próbával.
-2. **Feloldás (resolve)** — DNS A/AAAA/CNAME; az NXDOMAIN kiesik, az IP-k rögzülnek (élő / nem élő).
-3. **Portscan (scan)** — nyitott TCP-portok. Egy IP-t **egyszer** szkennel (kíméletes, akkor is, ha több
-   aldomén ugyanarra az IP-re mutat). Profilok: `service` · `common` (~1100) · `full` (1–65535) · `custom`.
-4. **Ujjlenyomat** — web-portnál HTTP státusz + `Server` + `<title>`, és a **TLS-tanúsítvány** CN/SAN/lejárat
-   (a SAN gyakran új aldomén-neveket is elárul); egyéb portnál passzív **banner** (pl. SSH/SMTP/FTP).
+**Passive** (runs by default, does not touch the target directly):
+- **Subdomain enumeration** from multiple public sources: Certificate Transparency
+  (certSpotter, crt.sh), passive-DNS aggregators (Anubis, HackerTarget) and the Wayback archive.
+- **Wildcard-DNS detection** (so `*.` catch-all records don't produce fake hosts).
+- **DNS resolution** (A / AAAA / CNAME) → live / dead.
+- **Enrichment**: reverse DNS (PTR) and ASN / country / organisation (Team Cymru), per IP.
+- **DNS & email posture** of the apex: MX, NS, TXT, CAA, **SPF, DMARC, DKIM**.
+- **Subdomain-takeover heuristic** (dangling CNAME to a known third-party service).
 
-Minden eredmény listázható, szűrhető (host/IP/szolgáltatás), és **CSV/JSON** exportálható.
+**Active** (started with a separate button — touches the target):
+- **Port scan** (TCP connect): profiles `service` · `common` (~1100) · `full` (1–65535) · `custom`
+  (e.g. `22,80,443,8000-8100`); intensity `polite` / `normal` / `aggressive`.
+- **Service & technology fingerprinting**: banner grab, HTTP status / `Server` / `X-Powered-By` /
+  `<title>`, TLS certificate CN / SAN (SANs often reveal new names), and a tech signature set
+  (WordPress, Drupal, Next.js, Laravel, nginx, Cloudflare, …).
+- **Takeover confirmation** (HTTP body fingerprint on the suspected hosts).
+- **Exposure / misconfiguration checks** (safe, GET-only): exposed `.git` / `.env`, directory
+  listing, open Elasticsearch / Kibana / Grafana / Prometheus, Spring actuator, and risky exposed
+  services (databases, RDP, SMB, Redis, …).
+- Optional **DNS brute-force** with a built-in prefix wordlist.
 
-## Intenzitás
+Results are filterable (host / IP / ASN / service, and live / exposed / takeover / dead), each finding
+has a **hover tooltip** explaining what it is, and everything is exportable to **CSV / JSON**. A
+**relationship graph** (domain ↔ host ↔ IP ↔ ASN) is one click away.
 
-| Fokozat | Port-párhuzam/IP | Host-párhuzam | Port-timeout | Jelleg |
-|---|---|---|---|---|
-| `polite` (alap) | 12 | 2 | 3,0 s | kíméletes, lassú |
-| `normal` | 64 | 4 | 2,0 s | kiegyensúlyozott |
-| `aggressive` | 250 | 8 | 1,2 s | gyors, zajos |
+## Install (desktop app)
 
-Alapból **csak publikus IP-t** szkennel (`allow_private` kapcsolja be a belső tartományokat is).
+Download the latest build from the [Releases](https://github.com/krisztianhari-wq/domain-recon/releases)
+page. The app runs locally and opens in your browser; **your own machine is the vantage point**.
 
-## Mac-alkalmazás (helyi, telepíthető)
+**macOS** (`domain-recon-macos-arm64.zip` for Apple Silicon, `…-x86_64.zip` for Intel):
+1. Unzip and move `domain-recon.app` to `/Applications`.
+2. The build is unsigned, so the first launch needs **right-click → Open** (then confirm). After that a
+   double-click works. (Alternatively: `xattr -dr com.apple.quarantine /Applications/domain-recon.app`.)
 
-A domain-recon futhat a saját gépeden önálló `.app`-ként — ilyenkor a **te géped a mérőpont**
-(nincs megosztott szerver-IP), és az adat a `~/Library/Application Support/domain-recon` mappába kerül.
+**Windows** (`domain-recon-windows-x64.zip`):
+1. Unzip anywhere and run `domain-recon.exe` from the extracted folder.
+2. The build is unsigned, so SmartScreen may warn — choose **More info → Run anyway**.
 
-- **Kész `.app`:** a GitHub **Releases** / **Actions** oldalról (macOS arm64 és Intel). Kibontás után
-  első indításkor: jobbklikk → *Megnyitás* (aláíratlan build). Böngészőablakban nyílik meg.
-- **Építés helyben:**
-  ```bash
-  ./build-mac.sh          # eredmény: dist/domain-recon.app
-  ```
-- **Építés nélkül, dupla kattintással:** a Finderben a **`run-mac.command`** (első indításkor létrehozza a
-  virtuális környezetet, majd böngészőt nyit).
+Data is stored per-user (macOS: `~/Library/Application Support/domain-recon`,
+Windows: `%APPDATA%\domain-recon`).
 
-## Helyi futtatás (fejlesztői)
+## Run from source
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-.venv/bin/uvicorn app.main:app --port 8795      # vagy: .venv/bin/python -m app.desktop
+.venv/bin/python -m app.desktop          # local desktop mode (opens a browser)
+# or the bare web server:
+.venv/bin/uvicorn app.main:app --port 8795
 ```
 
-Parancssorból, webszerver nélkül:
+Build a standalone app yourself (macOS / Windows / Linux):
 
 ```bash
-python -m app.cli scan example.com --ports service --intensity polite
-python -m app.cli scan example.com --ports full --intensity normal --json
+./build.sh        # result in dist/ (domain-recon.app on macOS, domain-recon/ elsewhere)
 ```
 
-## Környezeti változók
+## Command line (no web server)
 
-| Változó | Leírás |
+```bash
+python -m app.cli scan example.com                    # passive only
+python -m app.cli scan example.com --active           # passive + active (port scan, fingerprint)
+python -m app.cli scan example.com --active --ports full --intensity normal --brute --json
+```
+
+## Environment variables
+
+| Variable | Description |
 |---|---|
-| `RECON_DATA` | adatkönyvtár (SQLite); alap: `./data` |
-| `RECON_ALLOWED_HOSTS` | engedélyezett `Host`-fejlécek (vesszővel); üres = nincs szűrés |
-| `RECON_MAX_CONCURRENCY` | egyidejű vizsgálatok max. száma (alap 2) |
-| `RECON_KEEP` | megőrzött vizsgálatok száma (alap 60) |
-| `DNS_RESOLVERS` | DNS-ellenőrzésekhez (alap `1.1.1.1,8.8.8.8`) |
+| `RECON_DATA` | data directory (SQLite); default `./data` |
+| `RECON_ALLOWED_HOSTS` | allowed `Host` headers (comma-separated); empty = no filtering |
+| `RECON_MAX_CONCURRENCY` | max concurrent scans (default 2) |
+| `RECON_MAX_HOSTS` | cap on hosts processed per scan (default 750) |
+| `RECON_MAX_SOCKETS` | global cap on concurrent TCP connections (default 512) |
+| `RECON_KEEP` | number of scans retained (default 60) |
+| `RECON_PROXY_SECRET` | if set, only requests carrying the matching `X-Recon-Proxy` header are served |
+| `DNS_RESOLVERS` | resolvers for DNS checks (default `1.1.1.1,8.8.8.8`) |
 
-## API (olvasó, kivéve a vizsgálat indítását)
+## HTTP API
 
-- `POST /api/scan` — új vizsgálat `{domain, ports, custom_ports, intensity, ct, wordlist, scan_ports, allow_private}` → `{id}`
-- `GET /api/scan/{id}` — állapot + eredmény-hostok (folyamat-lekérdezéshez)
-- `GET /api/scans` — korábbi vizsgálatok
+- `POST /api/scan` — start a passive scan `{domain}` → `{id}`
+- `POST /api/scan/{id}/active` — start the active phase `{ports, custom_ports, intensity, brute, allow_private}`
+- `GET /api/scan/{id}` — status + results (for polling)
+- `GET /api/scans` — recent scans · `GET /api/version`
 - `POST /api/scan/{id}/cancel` · `DELETE /api/scan/{id}`
 - `GET /api/export/{id}.csv` · `GET /api/export/{id}.json`
-- `GET /healthz`
+- `GET /graph` — relationship graph · `GET /healthz`
 
-## Biztonság
+## Security
 
-Nincs beépített hitelesítés — az élesben fordított proxy (passkey / oauth2-proxy) elé kerül.
-Szigorú CSP, `noindex`, kéréstörzs-limit, `TrustedHost`, domain-validáció. A konténer nem root,
-csak olvasható fájlrendszerrel és eldobott képességekkel fut (a TCP-connect portscanhez nem kell `NET_RAW`).
+No built-in authentication — when hosting the web UI, put it behind a reverse proxy with authentication.
+Strict CSP, `noindex`, request-body limit, `Host` allow-list and domain validation. The desktop app binds
+to `127.0.0.1` only. A short self-assessment of the tool's own attack surface is in [AUDIT.md](AUDIT.md).
+The TCP-connect port scan needs no elevated privileges.
 
-sadrobot · PoC
+---
+sadrobot · domain-recon
