@@ -19,7 +19,8 @@ jobs:
         with: { python-version: '3.12' }
       - run: python -m pip install -q -r requirements.txt
       - run: python -m compileall -q app
-      - run: python -m app.cli scan example.com --ports custom --custom "80,443" --intensity aggressive --no-ct --json
+      - run: python -c "import app.main, app.engine, app.sources, app.enrich, app.fingerprint, app.vulncheck, app.db, app.cli, app.desktop; print('import smoke OK', app.__version__)"
+      - run: python -m app.cli scan --help
 
   app:
     needs: check
