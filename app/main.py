@@ -50,8 +50,11 @@ SEC_HEADERS = {
 
 @app.middleware("http")
 async def guard(request: Request, call_next):
-    # mélységi védelem: csak a fordított proxy (Caddy) közös titkát hordozó kérés megy át (a /healthz kivételével)
-    if PROXY_SECRET and request.url.path != "/healthz":
+    # a /healthz mindig átmegy (belső konténer-healthcheck, tetszőleges Host, proxy-titok nélkül)
+    if request.url.path == "/healthz":
+        return await call_next(request)
+    # mélységi védelem: csak a fordított proxy (Caddy) közös titkát hordozó kérés megy át
+    if PROXY_SECRET:
         if not hmac.compare_digest(request.headers.get("x-recon-proxy", ""), PROXY_SECRET):
             return PlainTextResponse("forbidden", status_code=403)
     # Host-fejléc ellenőrzés (ha konfigurálva)
