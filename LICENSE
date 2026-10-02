@@ -1,0 +1,106 @@
+domain-recon – Licence / Licenc
+Copyright (c) 2026 sadrobot. All rights reserved. / Minden jog fenntartva.
+
+The English and the Hungarian texts below are equivalent.
+Az alábbi angol és magyar szöveg egyenértékű.
+
+==============================================================================
+ENGLISH
+==============================================================================
+
+1. Ownership
+   The domain-recon software – its source code, scan engine, port and
+   service catalogue, user interface, texts, graphics, icons and the sadrobot
+   name and logo – is the property of sadrobot and is protected by copyright.
+   Third-party data sources (Certificate Transparency logs via certSpotter,
+   public DNS resolvers, RDAP/WHOIS registries and others) are the property
+   of their respective owners and are used under their own terms.
+
+2. What you may do without asking
+   You may use the official published builds for your own non-commercial use,
+   and view the source code on GitHub. The scans you run and their results
+   are yours – and so is the legal responsibility for running them. You must
+   have authorisation to enumerate, resolve and port-scan any target; active
+   scanning of systems you do not own or are not permitted to test may be
+   unlawful.
+
+3. What needs prior written permission from sadrobot
+   Anything else, in particular:
+   a) copying, modifying, adapting or translating the source code or any part
+      of it, including the scan engine;
+   b) publishing, distributing, selling, renting or sublicensing the software,
+      a modified version or any work derived from it;
+   c) building any part of it (code, design, graphics, icons) into another
+      product, app, website or service;
+   d) any commercial use, including use in paid penetration tests, audits,
+      consulting, courses, trainings or services;
+   e) using the sadrobot name or logo.
+   Viewing or forking the repository on GitHub does not grant any of these
+   rights.
+
+4. Asking for permission
+   Open an issue at https://github.com/krisztianhari-wq/domain-recon or
+   contact the author through the GitHub profile krisztianhari-wq. Permission
+   is valid only in writing.
+
+5. Third-party components
+   The software uses open-source components (among others FastAPI, Starlette,
+   uvicorn, httpx and the Python standard library). Those components remain
+   under their own licences; this licence does not restrict them.
+
+6. No warranty, no liability
+   The software is provided "as is", without any warranty. To the extent
+   permitted by law, sadrobot is not liable for any damage or loss arising
+   from the use of the software, including any consequence of scanning a
+   target without authorisation.
+
+==============================================================================
+MAGYAR
+==============================================================================
+
+1. Tulajdonjog
+   A domain-recon szoftver – forráskódja, vizsgálómotorja, port- és
+   szolgáltatás-katalógusa, felhasználói felülete, szövegei, grafikái,
+   ikonjai, valamint a sadrobot név és logó – a sadrobot tulajdona, és
+   szerzői jogi védelem alatt áll. A harmadik féltől származó adatforrások
+   (Certificate Transparency naplók a certSpotteren át, publikus DNS-feloldók,
+   RDAP/WHOIS regisztrátorok és mások) a saját tulajdonosaiké, és a saját
+   feltételeik szerint használhatók.
+
+2. Amit engedély nélkül megtehetsz
+   A hivatalosan kiadott változatokat saját, nem kereskedelmi célra
+   használhatod, a forráskódot a GitHubon megtekintheted. Az általad futtatott
+   vizsgálatok és azok eredményei a tieid – ahogy a futtatásuk jogi
+   felelőssége is. Minden célpont felsorolásához, feloldásához és
+   port-vizsgálatához engedéllyel kell rendelkezned; olyan rendszer aktív
+   vizsgálata, amely nem a tiéd, vagy amelyre nincs engedélyed, jogellenes
+   lehet.
+
+3. Amihez a sadrobot előzetes írásos engedélye kell
+   Minden más, különösen:
+   a) a forráskód vagy bármely része – ideértve a vizsgálómotort – másolása,
+      módosítása, átdolgozása vagy fordítása;
+   b) a szoftver, egy módosított változata vagy abból származó mű közzététele,
+      terjesztése, értékesítése, bérbeadása vagy allicencbe adása;
+   c) bármely részének (kód, design, grafika, ikonok) beépítése más termékbe,
+      appba, weboldalba vagy szolgáltatásba;
+   d) bármilyen kereskedelmi használat, ideértve a fizetős behatolásteszteket,
+      auditokat, tanácsadást, tanfolyamokat, képzéseket vagy szolgáltatásokat;
+   e) a sadrobot név vagy logó használata.
+   A repó megtekintése vagy forkolása a GitHubon ezekre semmilyen jogot nem ad.
+
+4. Engedélykérés
+   Nyiss egy issue-t a https://github.com/krisztianhari-wq/domain-recon
+   címen, vagy keresd a szerzőt a krisztianhari-wq GitHub-profilon keresztül.
+   Az engedély csak írásban érvényes.
+
+5. Harmadik féltől származó komponensek
+   A szoftver nyílt forráskódú komponenseket használ (többek között FastAPI,
+   Starlette, uvicorn, httpx és a Python standard könyvtár). Ezek a saját
+   licencük alatt maradnak; ez a licenc nem korlátozza őket.
+
+6. Nincs szavatosság, nincs felelősség
+   A szoftvert „ahogy van" alapon biztosítjuk, mindenféle szavatosság nélkül.
+   A jogszabályok által megengedett mértékig a sadrobot nem felel a szoftver
+   használatából eredő semmilyen kárért, ideértve a célpont engedély nélküli
+   vizsgálatának bármely következményét is.
