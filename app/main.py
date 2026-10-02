@@ -80,6 +80,11 @@ async def index():
     return FileResponse(os.path.join(STATIC, "index.html"))
 
 
+@app.get("/graph")
+async def graph():
+    return FileResponse(os.path.join(STATIC, "graph.html"))
+
+
 @app.get("/healthz")
 async def healthz():
     return PlainTextResponse("ok")

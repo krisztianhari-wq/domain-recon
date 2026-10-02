@@ -30,7 +30,7 @@ const I18N = {
     // lista
     f_all: "Mind", f_live: "Élő", f_exposed: "Kitett", f_takeover: "Takeover", f_dead: "Nem élő",
     filter_ph: "Szűrés hostnévre / IP-re / ASN-re / szolgáltatásra…",
-    col_export_json: "JSON", col_export_csv: "CSV",
+    col_graph: "Gráf", col_graph: "Graph", col_export_json: "JSON", col_export_csv: "CSV",
     none: "Nincs találat.", no_hosts: "Nincs host.",
     d_ips: "IP-címek", d_cname: "CNAME", d_source: "Forrás", d_ports: "Nyitott portok", d_sans: "TLS SAN (új nevek)",
     d_tech: "Technológia", d_exposed: "Kitett szolgáltatás", d_takeover: "Lehetséges takeover", d_vuln: "Kitettség / sebezhetőség",

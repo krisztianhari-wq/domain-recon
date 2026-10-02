@@ -62,6 +62,7 @@ async function tick() {
   renderProgress(s); renderActive(s); renderStats(); renderPosture(s); renderHosts();
   $("#csv").href = `/api/export/${current}.csv`;
   $("#json").href = `/api/export/${current}.json`;
+  $("#graphlink").href = `/graph#${current}`;
   const passiveDone = ["done", "error", "canceled"].includes(s.status);
   const activeIdle = !["queued", "running"].includes(s.active_status);
   if (passiveDone && activeIdle) { stopPoll(); $("#go").disabled = false; $("#activego").disabled = false; loadHistory(); }
