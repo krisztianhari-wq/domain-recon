@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="hu">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Kapcsolati gráf · domain-recon</title>
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/app.css">
+<link rel="stylesheet" href="/static/graph.css">
+<script src="/static/theme.js"></script>
+</head>
+<body>
+<header class="top">
+  <span class="brand"><span class="mark"><svg width="26" height="26" viewBox="0 0 26 26" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="4" y="7" width="18" height="14" rx="4"></rect><circle cx="10" cy="14" r="1.6" fill="currentColor"></circle><circle cx="16" cy="14" r="1.6" fill="currentColor"></circle><path d="M13 7V3"></path></svg></span>SADROBOT <small>// RECON GRÁF</small></span>
+  <div class="status">
+    <span class="gmeta" id="meta"></span>
+    <a class="btn" id="back" href="/">← Vissza</a>
+    <div class="langs" role="group"><button type="button" data-lang="hu">HU</button><button type="button" data-lang="en">EN</button></div>
+    <button class="icon-btn" id="theme" type="button" aria-label="theme">◐</button>
+  </div>
+</header>
+
+<main>
+  <div>
+    <p class="eyebrow" id="eyebrow">Támadási felület · kapcsolati gráf</p>
+    <h1 id="h1">Kapcsolati gráf</h1>
+    <p class="sub" id="sub">Domain → hostok → IP-címek → ASN / szervezet. Húzással mozgatható, görgővel nagyítható.</p>
+  </div>
+
+  <section class="graphwrap" id="wrap">
+    <div class="gctl">
+      <button class="icon-btn" id="zin" type="button" aria-label="zoom in">+</button>
+      <button class="icon-btn" id="zout" type="button" aria-label="zoom out">−</button>
+      <button class="icon-btn" id="zfit" type="button" aria-label="fit">⤢</button>
+    </div>
+    <svg id="graph" viewBox="0 0 1400 1400" preserveAspectRatio="xMidYMid meet" role="img" aria-label="relationship graph"></svg>
+    <div class="legend" id="legend">
+      <span><i class="l-domain"></i>domain</span>
+      <span><i class="l-host"></i>host</span>
+      <span><i class="l-take"></i>takeover</span>
+      <span><i class="l-ip"></i>IP</span>
+      <span><i class="l-asn"></i>ASN</span>
+    </div>
+  </section>
+</main>
+
+<div class="gtip" id="tip" role="status" aria-live="polite"></div>
+
+<script src="/static/i18n.js"></script>
+<script src="/static/graph.js"></script>
+</body>
+</html>

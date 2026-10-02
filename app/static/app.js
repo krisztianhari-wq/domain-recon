@@ -99,7 +99,7 @@ function renderActive(s) {
   }
 }
 
-function isExposed(h) { return (h.exposed_flags && h.exposed_flags.length) || (h.ports || []).some(p => !p.expected); }
+function isExposed(h) { return (h.exposed_flags && h.exposed_flags.length) || (h.vuln && h.vuln.length) || (h.ports || []).some(p => !p.expected); }
 function hasTakeover(h) { return h.takeover && h.takeover.service; }
 
 function renderStats() {
@@ -178,9 +178,17 @@ function ipShort(h) {
   return s;
 }
 
+const SEVCLS = {critical: "bad", high: "bad", medium: "warn", low: "warn", info: ""};
+function worstVuln(h) {
+  const order = ["critical", "high", "medium", "low", "info"];
+  const v = h.vuln || [];
+  for (const s of order) if (v.some(x => x.severity === s)) return s;
+  return null;
+}
 function badges(h) {
   let b = "";
   if (hasTakeover(h)) { const st = h.takeover.confirmed ? t("confirmed") : t("suspected"); b += `<span class="bdg bad" data-tip="${esc(explainRec("takeover"))}">takeover: ${esc(h.takeover.service)} (${st})</span>`; }
+  (h.vuln || []).forEach(v => { b += `<span class="bdg ${SEVCLS[v.severity] || ""}" data-tip="${esc(v.evidence || v.title)}">${esc(v.severity)}: ${esc(v.title)}</span>`; });
   if (h.wildcard) b += `<span class="bdg" data-tip="${esc(explainRec("wildcard"))}">${t("wild")}</span>`;
   (h.exposed_flags || []).forEach(f => { b += `<span class="bdg warn" data-tip="${esc(explainRec("exposed"))}">${esc(f)}</span>`; });
   return b;
@@ -220,6 +228,7 @@ function renderDetail(h) {
      ${esc(h.takeover.service)} → ${esc(h.takeover.cname)} · ${h.takeover.confirmed ? t("confirmed") : t("suspected")}</div>` : "";
   const tech = (h.tech && h.tech.length) ? `<div class="kv"><b>${t("d_tech")}:</b> ${h.tech.map(x => `<span class="tag">${esc(x)}</span>`).join(" ")}</div>` : "";
   const exp = (h.exposed_flags && h.exposed_flags.length) ? `<div class="kv" data-tip="${esc(explainRec("exposed"))}"><b>${t("d_exposed")}:</b> ${h.exposed_flags.map(x => `<span class="tag san">${esc(x)}</span>`).join(" ")}</div>` : "";
+  const vuln = (h.vuln && h.vuln.length) ? `<div class="kv"><b>${t("d_vuln")}:</b> ${h.vuln.map(v => `<span class="bdg ${SEVCLS[v.severity] || ""}" data-tip="${esc(v.evidence || "")}">${esc(v.severity)}: ${esc(v.title)}</span>`).join(" ")}</div>` : "";
   const sans = (h.tls_sans && h.tls_sans.length) ? `<div class="kv"><b>${t("d_sans")}:</b> ${h.tls_sans.map(s => `<span class="tag san">${esc(s)}</span>`).join(" ")}</div>` : "";
 
   let portsTbl = "";
@@ -243,7 +252,7 @@ function renderDetail(h) {
   return `<div class="detail">
     <div class="kv">${h.cname ? `<span data-tip="${esc(explainRec("cname"))}"><b>${t("d_cname")}:</b> ${esc(h.cname)}</span>` : ""}
       <span><b>${t("d_source")}:</b> ${h.source_brute ? "brute" : "passzív"}</span></div>
-    ${ipsTable}${tk}${tech}${exp}${sans}${portsTbl}</div>`;
+    ${ipsTable}${tk}${vuln}${tech}${exp}${sans}${portsTbl}</div>`;
 }
 
 // ---- előzmények ----

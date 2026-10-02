@@ -30,6 +30,7 @@ from . import enrich
 from . import fingerprint as fp
 from . import netchecks as nc
 from . import sources
+from . import vulncheck
 from .ports import EXPECTED_WEB, resolve_profile, svc
 
 UA = "domain-recon/0.2 (+sadrobot; attack-surface mapping)"
@@ -255,6 +256,12 @@ class Engine:
                         d["scanned"] = True
                         d["tech"] = sorted({t for p in ports_out for t in p.get("tech", [])})
                         d["exposed_flags"] = self._exposed_flags(ports_out)
+                        if ports_out and ips:
+                            try:
+                                d["vuln"] = await vulncheck.exposed_checks(
+                                    client, host, ips[0], [p["port"] for p in ports_out], timeout=self.ftimeout)
+                            except Exception:  # noqa: BLE001
+                                d["vuln"] = []
                         await self._confirm_takeover(client, host, d)
                         sans = sorted({s.lower().lstrip("*.") for p in ports_out
                                        for s in (p.get("tls", {}) or {}).get("sans", [])

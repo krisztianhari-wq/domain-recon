@@ -1,0 +1,88 @@
+/* domain-recon – kapcsolati gráf. Csak az app.css tokenjeit használja, nincs külső erőforrás. */
+
+.graphwrap{
+  position:relative;
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:var(--radius);
+  overflow:hidden;
+}
+svg#graph{
+  display:block;
+  width:100%;
+  height:70vh;
+  min-height:420px;
+  touch-action:none;               /* saját pan/zoom kezelés */
+  cursor:grab;
+  background:
+    radial-gradient(circle at 50% 46%, color-mix(in srgb,var(--accent) 7%,transparent), transparent 60%);
+}
+svg#graph.panning{cursor:grabbing}
+
+/* élek */
+#graph .edge{stroke:var(--line);stroke-width:1;fill:none}
+#graph .edge.e-host{stroke:color-mix(in srgb,var(--accent) 34%,transparent)}
+#graph .edge.e-ip{stroke:var(--line)}
+#graph .edge.e-asn{stroke:color-mix(in srgb,var(--warn) 32%,transparent)}
+#graph .edge.hot{stroke:var(--accent);stroke-width:1.6}
+
+/* csomópontok */
+#graph .node{cursor:default}
+#graph .node.host{cursor:pointer}
+#graph .node circle{stroke:var(--bg);stroke-width:1.5;transition:filter .12s ease}
+#graph .node.domain circle{fill:var(--accent);stroke-width:2;filter:drop-shadow(0 0 7px color-mix(in srgb,var(--accent) 70%,transparent))}
+#graph .node.host circle{fill:var(--good)}
+#graph .node.host.takeover circle{fill:var(--bad)}
+#graph .node.ip circle{fill:var(--ink-2)}
+#graph .node.asn circle{fill:var(--warn)}
+#graph .node.hot circle{filter:drop-shadow(0 0 6px currentColor)}
+#graph .node.dim{opacity:.18}
+
+/* feliratok */
+#graph text{font:600 13px var(--mono);fill:var(--ink);paint-order:stroke;
+  stroke:var(--bg);stroke-width:3px;stroke-linejoin:round}
+#graph text.lbl-domain{font-size:16px;fill:var(--ink)}
+#graph text.lbl-asn{font-size:11px;fill:var(--ink-2);stroke-width:2.5px}
+
+/* jelmagyarázat */
+.legend{
+  position:absolute;left:12px;bottom:12px;z-index:3;
+  display:flex;flex-wrap:wrap;gap:8px 14px;
+  padding:9px 12px;border-radius:9px;
+  background:color-mix(in srgb,var(--panel) 86%,transparent);
+  border:1px solid var(--line);backdrop-filter:blur(8px);
+  font:12px var(--mono);color:var(--ink-2);max-width:calc(100% - 24px)}
+.legend span{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.legend i{width:11px;height:11px;border-radius:50%;flex:none}
+.legend i.l-domain{background:var(--accent)}
+.legend i.l-host{background:var(--good)}
+.legend i.l-take{background:var(--bad)}
+.legend i.l-ip{background:var(--ink-2)}
+.legend i.l-asn{background:var(--warn)}
+
+/* lebegő tooltip */
+.gtip{
+  position:fixed;z-index:80;pointer-events:none;
+  max-width:320px;padding:8px 11px;border-radius:8px;
+  background:var(--panel-2);border:1px solid var(--accent);color:var(--ink);
+  font:12px/1.45 var(--mono);
+  box-shadow:0 8px 28px rgba(0,0,0,.45);
+  opacity:0;transition:opacity .1s ease}
+.gtip.on{opacity:1}
+.gtip b{color:var(--ink)}
+.gtip small{display:block;color:var(--ink-3);margin-top:2px}
+
+/* vezérlők (zoom/újraközpontozás) */
+.gctl{position:absolute;right:12px;top:12px;z-index:3;display:flex;flex-direction:column;gap:6px}
+.gctl button{width:34px;height:34px}
+
+/* fejléc-cím + meta */
+.gmeta{font:12.5px var(--mono);color:var(--ink-3)}
+.gmeta b{color:var(--ink-2)}
+.gmsg{padding:40px 16px;text-align:center;color:var(--ink-2);font:14px var(--mono)}
+.gmsg a{font-weight:600}
+
+@media (max-width:820px){
+  svg#graph{height:62vh;min-height:360px}
+  .legend{font-size:11px;gap:6px 10px;padding:7px 10px}
+}
