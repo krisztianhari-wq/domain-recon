@@ -103,28 +103,47 @@ def _norm_domain(raw: str) -> str:
     return d
 
 
-@app.post("/api/scan")
-async def api_scan(payload: dict = Body(...)):
-    running = sum(1 for s in db.recent_scans(MAX_SCANS * 3) if s["status"] in ("queued", "running"))
-    if running >= MAX_SCANS:
-        raise HTTPException(429, f"Már {running} vizsgálat fut. Várd meg, amíg befejeződik.")
-    domain = _norm_domain(payload.get("domain", ""))
+def _active_opts(payload: dict) -> dict:
     ports = str(payload.get("ports", "service"))
     custom = str(payload.get("custom_ports", ""))[:2000]
     _, pname = resolve_profile(ports, custom)
-    opts = {
+    return {
         "ports": ports, "custom_ports": custom, "profile": pname,
         "intensity": payload.get("intensity", "polite") if payload.get("intensity") in engine.INTENSITY else "polite",
-        "ct": bool(payload.get("ct", True)),
-        "wordlist": bool(payload.get("wordlist", False)),
         "scan_ports": bool(payload.get("scan_ports", True)),
+        "brute": bool(payload.get("brute", False)),
         "allow_private": bool(payload.get("allow_private", False)),
     }
+
+
+@app.post("/api/scan")
+async def api_scan(payload: dict = Body(...)):
+    running = sum(1 for s in db.recent_scans(MAX_SCANS * 3)
+                  if s["status"] in ("queued", "running") or s.get("active_status") in ("queued", "running"))
+    if running >= MAX_SCANS:
+        raise HTTPException(429, f"Már {running} vizsgálat fut. Várd meg, amíg befejeződik.")
+    domain = _norm_domain(payload.get("domain", ""))
+    # a passzív fázis az alap; az aktív-opciókat eltároljuk a későbbi aktív indításhoz
+    opts = _active_opts(payload)
     scan_id = secrets.token_hex(8)
     db.create_scan(scan_id, domain, opts)
     db.prune(KEEP)
-    engine.start_scan(db, scan_id, domain, opts)
+    engine.start_passive(db, scan_id, domain, opts)
     return {"id": scan_id, "domain": domain, "opts": opts}
+
+
+@app.post("/api/scan/{scan_id}/active")
+async def api_scan_active(scan_id: str, payload: dict = Body(default={})):
+    s = db.get_scan(scan_id)
+    if not s:
+        raise HTTPException(404, "Nincs ilyen vizsgálat.")
+    if s["status"] in ("queued", "running"):
+        raise HTTPException(409, "A passzív fázis még fut.")
+    if s.get("active_status") in ("queued", "running"):
+        raise HTTPException(409, "Az aktív fázis már fut.")
+    opts = _active_opts({**(s.get("opts") or {}), **(payload or {})})
+    engine.start_active(db, scan_id, opts)
+    return {"id": scan_id, "active": "running", "opts": opts}
 
 
 @app.get("/api/scans")

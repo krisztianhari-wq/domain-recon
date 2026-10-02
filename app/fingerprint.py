@@ -84,15 +84,21 @@ async def probe_http(host: str, ip: str, port: int, tls: bool, timeout: float = 
     m = re.match(r"HTTP/\d\.\d\s+(\d{3})", head_txt)
     if m:
         status = int(m.group(1))
-    server = None
-    ms = _SERVER.search(head_txt)
-    if ms:
-        server = ms.group(1).strip()[:120]
+    headers: dict[str, str] = {}
+    for line in head_txt.split("\r\n")[1:]:
+        k, _, v = line.partition(":")
+        if v:
+            headers[k.strip().lower()] = v.strip()
+    server = headers.get("server", "")[:120] or None
+    body_txt = body[:_HTTP_MAX].decode("utf-8", "replace")
     title = None
     mt = _TITLE.search(body[:_HTTP_MAX])
     if mt:
         title = re.sub(r"\s+", " ", mt.group(1).decode("utf-8", "replace")).strip()[:160]
-    return {"scheme": scheme, "status": status, "server": server, "title": title or None}
+    from . import enrich                         # technológia-ujjlenyomat (fejléc + törzs)
+    tech = enrich.detect_tech(headers, body_txt)
+    return {"scheme": scheme, "status": status, "server": server, "title": title or None,
+            "powered_by": headers.get("x-powered-by"), "tech": tech}
 
 
 async def probe_tls(host: str, ip: str, port: int, timeout: float = 6.0) -> dict | None:

@@ -1,0 +1,43 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0D131A"/>
+      <stop offset="1" stop-color="#0A0E13"/>
+    </linearGradient>
+    <linearGradient id="sweep" x1="0" y1="0" x2="1" y2="0.4">
+      <stop offset="0" stop-color="#3CD6E6" stop-opacity="0"/>
+      <stop offset="1" stop-color="#3CD6E6" stop-opacity="0.55"/>
+    </linearGradient>
+    <radialGradient id="ctr" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#9BF0FA"/>
+      <stop offset="1" stop-color="#3CD6E6"/>
+    </radialGradient>
+  </defs>
+
+  <!-- squircle háttér -->
+  <rect x="96" y="96" width="832" height="832" rx="200" fill="url(#bg)"/>
+  <rect x="96.5" y="96.5" width="831" height="831" rx="199.5" fill="none" stroke="#3CD6E6" stroke-opacity="0.18" stroke-width="3"/>
+
+  <!-- radar -->
+  <g transform="translate(512 512)" fill="none" stroke="#3CD6E6">
+    <circle r="130" stroke-opacity="0.32" stroke-width="7"/>
+    <circle r="235" stroke-opacity="0.26" stroke-width="7"/>
+    <circle r="330" stroke-opacity="0.20" stroke-width="7"/>
+    <line x1="-330" y1="0" x2="330" y2="0" stroke-opacity="0.13" stroke-width="5"/>
+    <line x1="0" y1="-330" x2="0" y2="330" stroke-opacity="0.13" stroke-width="5"/>
+  </g>
+
+  <!-- sweep -->
+  <path d="M512,512 L512,180 A332,332 0 0 1 824,398 Z" fill="url(#sweep)"/>
+  <line x1="512" y1="512" x2="824" y2="398" stroke="#3CD6E6" stroke-opacity="0.8" stroke-width="5"/>
+
+  <!-- talált hostok -->
+  <circle cx="666" cy="378" r="27" fill="#3CD6E6" fill-opacity="0.25"/>
+  <circle cx="666" cy="378" r="13" fill="#9BF0FA"/>
+  <circle cx="392" cy="598" r="10" fill="#3CD6E6"/>
+  <circle cx="606" cy="656" r="10" fill="#3CD6E6"/>
+  <circle cx="420" cy="432" r="7" fill="#3CD6E6" fill-opacity="0.75"/>
+
+  <!-- középpont -->
+  <circle cx="512" cy="512" r="13" fill="url(#ctr)"/>
+</svg>

@@ -6,6 +6,7 @@
 <meta name="robots" content="noindex,nofollow">
 <meta name="referrer" content="no-referrer">
 <title>domain-recon · sadrobot</title>
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/app.css">
 <script src="/static/theme.js"></script>
 </head>
@@ -28,7 +29,34 @@
   <section class="card search">
     <div class="searchbar">
       <input type="text" id="domain" autocomplete="off" autocapitalize="off" spellcheck="false" data-i18n-ph="ph_domain" placeholder="example.com">
-      <button class="go" id="go" type="button" data-i18n="go">Feltérképezés</button>
+      <button class="go" id="go" type="button" data-i18n="go">Passzív feltérképezés</button>
+    </div>
+    <p class="note warn" data-i18n="authz">Csak engedélyezett célpontot vizsgálj.</p>
+  </section>
+
+  <section class="card prog hide" id="progcard">
+    <div class="row">
+      <div class="progmeta" style="flex:1">
+        <span><span class="tag">●</span> <span class="stage-chip" id="stage">–</span> · <span id="progtxt">0 / 0</span></span>
+        <span id="scanmeta"></span>
+      </div>
+      <button class="btn danger" id="cancel" type="button" data-i18n="cancel">Megszakítás</button>
+    </div>
+    <div class="progbar" id="progbar"><i></i></div>
+  </section>
+
+  <section class="stats hide" id="stats"></section>
+
+  <section class="card hide" id="posture">
+    <h2 data-i18n="posture_title">DNS / e-mail posture</h2>
+    <div class="postgrid" id="postgrid"></div>
+    <p class="note warn hide" id="wildcardnote"></p>
+  </section>
+
+  <section class="card hide" id="activecard">
+    <div class="row">
+      <div><h2 data-i18n="active_title">Aktív vizsgálat</h2><p class="sub" data-i18n="active_help">A felderített hostok megérintése…</p></div>
+      <button class="go" id="activego" type="button" data-i18n="active_go">Aktív vizsgálat indítása</button>
     </div>
     <div class="opts">
       <div class="opt">
@@ -55,37 +83,25 @@
       <div class="opt">
         <label data-i18n="o_extra">Egyéb</label>
         <div class="checks">
-          <label class="chk"><input type="checkbox" id="ct" checked><span data-i18n="x_ct">CT-napló</span></label>
-          <label class="chk"><input type="checkbox" id="wordlist"><span data-i18n="x_wordlist">Prefix-szótár</span></label>
-          <label class="chk"><input type="checkbox" id="scanports" checked><span data-i18n="x_scanports">Portscan</span></label>
+          <label class="chk"><input type="checkbox" id="brute"><span data-i18n="x_brute">DNS-brute</span></label>
           <label class="chk"><input type="checkbox" id="allowprivate"><span data-i18n="x_private">Privát IP is</span></label>
         </div>
       </div>
     </div>
-    <p class="note warn" data-i18n="authz">Csak engedélyezett célpontot vizsgálj.</p>
-  </section>
-
-  <section class="card prog hide" id="progcard">
-    <div class="row">
-      <div class="progmeta" style="flex:1">
-        <span><span class="stage-chip" id="stage">–</span> · <span id="progtxt">0 / 0</span></span>
-        <span id="scanmeta"></span>
-      </div>
-      <button class="btn danger" id="cancel" type="button" data-i18n="cancel">Megszakítás</button>
+    <div class="prog hide" id="activeprog">
+      <div class="progmeta"><span><span class="stage-chip" id="astage">–</span> · <span id="aprogtxt">0 / 0</span></span></div>
+      <div class="progbar" id="aprogbar"><i></i></div>
     </div>
-    <div class="progbar" id="progbar"><i></i></div>
   </section>
-
-  <section class="stats hide" id="stats"></section>
 
   <section class="hide" id="results">
-    <p class="note warn hide" id="scannote"></p>
     <div class="toolbar">
       <input type="text" id="filter" class="filter" data-i18n-ph="filter_ph" placeholder="Szűrés…">
       <div class="pills" id="livefilter" role="group">
         <button type="button" data-v="all" class="on" data-i18n="f_all">Mind</button>
         <button type="button" data-v="live" data-i18n="f_live">Élő</button>
         <button type="button" data-v="exposed" data-i18n="f_exposed">Kitett</button>
+        <button type="button" data-v="takeover" data-i18n="f_takeover">Takeover</button>
         <button type="button" data-v="dead" data-i18n="f_dead">Nem élő</button>
       </div>
       <div style="display:flex;gap:8px">

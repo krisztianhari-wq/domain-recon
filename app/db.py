@@ -15,12 +15,18 @@ CREATE TABLE IF NOT EXISTS scans(
   id        TEXT PRIMARY KEY,
   domain    TEXT NOT NULL,
   opts      TEXT NOT NULL,
-  status    TEXT NOT NULL,          -- queued|running|done|error|canceled
+  status    TEXT NOT NULL,          -- (passzív) queued|running|done|error|canceled
   stage     TEXT,
   note      TEXT,                   -- nem-fatális figyelmeztetés (pl. host-korlát miatti csonkolás)
   done      INTEGER DEFAULT 0,
   total     INTEGER DEFAULT 0,
   error     TEXT,
+  active_status TEXT DEFAULT 'none', -- none|queued|running|done|error|canceled
+  active_stage  TEXT,
+  active_done   INTEGER DEFAULT 0,
+  active_total  INTEGER DEFAULT 0,
+  posture   TEXT,                   -- JSON: apex DNS-posture (MX/NS/SPF/DMARC/CAA/DKIM)
+  wildcard  TEXT,                   -- JSON: wildcard-IP-k
   n_hosts   INTEGER DEFAULT 0,
   n_live    INTEGER DEFAULT 0,
   n_ports   INTEGER DEFAULT 0,
@@ -58,7 +64,8 @@ class DB:
         )
         self._cx.commit()
 
-    _STATUS_COLS = {"stage", "done", "total", "error", "n_hosts", "n_live", "n_ports", "started", "finished", "note"}
+    _STATUS_COLS = {"stage", "done", "total", "error", "n_hosts", "n_live", "n_ports", "started", "finished",
+                    "note", "active_status", "active_stage", "active_done", "active_total"}
 
     def set_status(self, scan_id: str, status: str, **fields) -> None:
         cols, vals = ["status"], [status]
@@ -83,6 +90,19 @@ class DB:
         self._cx.execute("UPDATE scans SET stage=?,done=?,total=? WHERE id=?", (stage, done, total, scan_id))
         self._cx.commit()
 
+    def set_active_progress(self, scan_id: str, stage: str, done: int, total: int) -> None:
+        self._cx.execute("UPDATE scans SET active_stage=?,active_done=?,active_total=? WHERE id=?",
+                         (stage, done, total, scan_id))
+        self._cx.commit()
+
+    def set_posture(self, scan_id: str, posture: dict) -> None:
+        self._cx.execute("UPDATE scans SET posture=? WHERE id=?", (json.dumps(posture), scan_id))
+        self._cx.commit()
+
+    def set_wildcard(self, scan_id: str, ips: list) -> None:
+        self._cx.execute("UPDATE scans SET wildcard=? WHERE id=?", (json.dumps(ips), scan_id))
+        self._cx.commit()
+
     def set_counts(self, scan_id: str, n_hosts: int, n_live: int, n_ports: int) -> None:
         self._cx.execute("UPDATE scans SET n_hosts=?,n_live=?,n_ports=? WHERE id=?",
                          (n_hosts, n_live, n_ports, scan_id))
@@ -94,11 +114,13 @@ class DB:
             return None
         d = dict(r)
         d["opts"] = json.loads(d["opts"])
+        d["posture"] = json.loads(d["posture"]) if d.get("posture") else None
+        d["wildcard"] = json.loads(d["wildcard"]) if d.get("wildcard") else []
         return d
 
     def recent_scans(self, limit: int = 40) -> list[dict]:
         rows = self._cx.execute(
-            "SELECT id,domain,status,n_hosts,n_live,n_ports,created,finished FROM scans "
+            "SELECT id,domain,status,active_status,n_hosts,n_live,n_ports,created,finished FROM scans "
             "ORDER BY created DESC LIMIT ?", (limit,)).fetchall()
         return [dict(r) for r in rows]
 

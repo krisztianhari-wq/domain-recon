@@ -110,6 +110,27 @@ td.m{font-family:var(--mono);color:var(--ink-2);font-size:12px;overflow-wrap:any
 .langs button:hover{color:var(--ink)}.langs button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent)}
 footer{max-width:1280px;margin:0 auto;padding:0 28px 28px;font:12px var(--mono);color:var(--ink-3);display:flex;gap:6px 16px;flex-wrap:wrap;justify-content:space-between;text-transform:uppercase;letter-spacing:.06em}
 .hide{display:none !important}
+/* posture-rács */
+.postgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px}
+.postcell{display:flex;flex-direction:column;gap:2px;padding:9px 12px;border:1px solid var(--line);border-radius:9px;background:var(--panel-2)}
+.postcell b{font:600 11px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
+.postcell span{font:600 13px var(--display)}
+.postcell.good span{color:var(--good)}.postcell.warn span{color:var(--warn)}
+.postcell.good{border-color:color-mix(in srgb,var(--good) 35%,transparent)}
+.postcell.warn{border-color:color-mix(in srgb,var(--warn) 35%,transparent)}
+/* jelvények + ASN */
+.bdg{display:inline-flex;align-items:center;font:500 11px var(--mono);padding:2px 8px;border-radius:999px;margin:2px 3px 0 0;background:var(--panel-2);color:var(--ink-2);border:1px solid var(--line);white-space:nowrap}
+.bdg.bad{background:var(--bad-bg);color:var(--bad);border-color:color-mix(in srgb,var(--bad) 40%,transparent)}
+.bdg.warn{background:var(--warn-bg);color:var(--warn);border-color:color-mix(in srgb,var(--warn) 40%,transparent)}
+.asn{font:500 11px var(--mono);color:var(--ink-3);margin-left:6px;padding:1px 6px;border:1px solid var(--line);border-radius:5px}
+.hrow.takeover .dot{color:var(--bad)}
+/* hover-info (tooltip) */
+[data-tip]{position:relative;cursor:help}
+[data-tip]:hover::after{content:attr(data-tip);position:absolute;left:0;bottom:calc(100% + 6px);z-index:60;
+  width:max-content;max-width:300px;white-space:normal;padding:8px 11px;border-radius:8px;
+  background:var(--panel-2);border:1px solid var(--accent);color:var(--ink);font:12px/1.45 var(--mono);
+  box-shadow:0 8px 28px rgba(0,0,0,.45);pointer-events:none}
+th[data-tip],td[data-tip]{text-decoration:underline dotted var(--ink-3) 1px;text-underline-offset:3px}
 @media (max-width:820px){
   header.top{padding:10px 14px;gap:10px}.brand small{display:none}
   main{padding:16px 14px 36px;gap:14px}h1{font-size:23px}

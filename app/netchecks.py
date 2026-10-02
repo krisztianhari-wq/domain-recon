@@ -12,7 +12,7 @@ import time
 import httpx
 
 RESOLVERS = [r.strip() for r in os.getenv("DNS_RESOLVERS", "1.1.1.1,8.8.8.8").split(",") if r.strip()]
-QTYPES = {"A": 1, "NS": 2, "CNAME": 5, "SOA": 6, "MX": 15, "TXT": 16, "AAAA": 28, "CAA": 257}
+QTYPES = {"A": 1, "NS": 2, "CNAME": 5, "SOA": 6, "PTR": 12, "MX": 15, "TXT": 16, "AAAA": 28, "CAA": 257}
 
 
 # ---------------- DNS-kliens (UDP) ----------------
@@ -68,8 +68,16 @@ def _dns_query_sync(name: str, qtype: str, resolver: str, timeout: float):
             out.append(socket.inet_ntoa(rd))
         elif typ == 28 and rdl == 16:
             out.append(socket.inet_ntop(socket.AF_INET6, rd))
-        elif typ in (2, 5):
+        elif typ in (2, 5, 12):
             out.append(_read_name(data, off)[0])
+        elif typ == 257:                                   # CAA: flag(1) taglen(1) tag value
+            try:
+                taglen = rd[1]
+                tag = rd[2:2 + taglen].decode("ascii", "replace")
+                val = rd[2 + taglen:].decode("ascii", "replace")
+                out.append(f"{tag} {val}")
+            except Exception:  # noqa: BLE001
+                pass
         elif typ == 15:
             pref = struct.unpack(">H", rd[:2])[0]
             out.append(f"{pref} {_read_name(data, off + 2)[0]}")

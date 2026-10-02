@@ -7,6 +7,7 @@ PY=${PYTHON:-python3}
 $PY -m pip install -q -r requirements.txt pyinstaller
 NAME="domain-recon"
 ARGS=(--noconfirm --clean --name "$NAME" --windowed
+      --icon assets/icon.icns
       --collect-all uvicorn --collect-submodules uvicorn
       --collect-submodules fastapi --collect-submodules starlette
       --collect-all anyio --collect-submodules httpx --collect-submodules httpcore
