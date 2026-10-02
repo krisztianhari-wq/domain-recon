@@ -100,7 +100,9 @@ function renderActive(s) {
   }
 }
 
-function isExposed(h) { return (h.exposed_flags && h.exposed_flags.length) || (h.vuln && h.vuln.length) || (h.ports || []).some(p => !p.expected); }
+// „kitett” = valóban kockázatos szolgáltatás (DB/admin/nyílt adattár) vagy sebezhetőség-találat.
+// Egy sima nyitott port (pl. 22/SSH, 25/SMTP) önmagában NEM tesz egy hostot kitetté.
+function isExposed(h) { return !!((h.exposed_flags && h.exposed_flags.length) || (h.vuln && h.vuln.length)); }
 function hasTakeover(h) { return h.takeover && h.takeover.service; }
 
 function renderStats() {
