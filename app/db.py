@@ -54,7 +54,20 @@ class DB:
         self._cx.execute("PRAGMA synchronous=NORMAL")
         self._cx.execute("PRAGMA busy_timeout=5000")
         self._cx.executescript(SCHEMA)
+        self._migrate()
         self._cx.commit()
+
+    def _migrate(self):
+        """Hiányzó oszlopok pótlása régebbi adatbázisban (idempotens)."""
+        have = {r["name"] for r in self._cx.execute("PRAGMA table_info(scans)").fetchall()}
+        add = {
+            "note": "TEXT", "active_status": "TEXT DEFAULT 'none'", "active_stage": "TEXT",
+            "active_done": "INTEGER DEFAULT 0", "active_total": "INTEGER DEFAULT 0",
+            "posture": "TEXT", "wildcard": "TEXT",
+        }
+        for col, decl in add.items():
+            if col not in have:
+                self._cx.execute(f"ALTER TABLE scans ADD COLUMN {col} {decl}")
 
     # ---- scans ----
     def create_scan(self, scan_id: str, domain: str, opts: dict) -> None:
