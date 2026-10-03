@@ -60,6 +60,7 @@ async function tick() {
   catch (e) { return; }
   scan = s; hosts = s.hosts || [];
   renderProgress(s); renderActive(s); renderStats(); renderPosture(s); renderHosts();
+  $("#md").href = `/api/export/${current}.md`;
   $("#csv").href = `/api/export/${current}.csv`;
   $("#json").href = `/api/export/${current}.json`;
   $("#graphlink").href = `/graph#${current}`;

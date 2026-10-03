@@ -19,7 +19,7 @@ from fastapi import Body, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import __version__, engine
+from . import __version__, engine, report
 from .db import DB
 from .ports import resolve_profile
 
@@ -203,15 +203,28 @@ async def api_scan_delete(scan_id: str):
     return {"deleted": True}
 
 
-@app.get("/api/export/{scan_id}.json")
-async def api_export_json(scan_id: str):
+def _scan_for_export(scan_id: str):
     s = db.get_scan(scan_id)
     if not s:
         raise HTTPException(404, "Nincs ilyen vizsgálat.")
-    s["hosts"] = db.hosts(scan_id)
-    data = json.dumps(s, ensure_ascii=False, indent=2)
+    s["version"], s["build"] = __version__, BUILD
+    return s, db.hosts(scan_id)
+
+
+@app.get("/api/export/{scan_id}.json")
+async def api_export_json(scan_id: str):
+    s, hosts = _scan_for_export(scan_id)
+    data = json.dumps(report.build_json(s, hosts), ensure_ascii=False, indent=2)
     return Response(data, media_type="application/json",
                     headers={"Content-Disposition": f'attachment; filename="recon_{s["domain"]}_{scan_id}.json"'})
+
+
+@app.get("/api/export/{scan_id}.md")
+async def api_export_md(scan_id: str):
+    s, hosts = _scan_for_export(scan_id)
+    data = report.build_markdown(s, hosts)
+    return Response(data, media_type="text/markdown; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="recon_{s["domain"]}_{scan_id}.md"'})
 
 
 def _csv_safe(v) -> str:
@@ -224,25 +237,36 @@ def _csv_safe(v) -> str:
 
 @app.get("/api/export/{scan_id}.csv")
 async def api_export_csv(scan_id: str):
-    s = db.get_scan(scan_id)
-    if not s:
-        raise HTTPException(404, "Nincs ilyen vizsgálat.")
+    s, hosts = _scan_for_export(scan_id)
     buf = io.StringIO()
     w = csv.writer(buf)
     w.writerow(["# domain-recon", s["domain"], scan_id, time.strftime("%Y-%m-%d %H:%M", time.localtime(s["created"]))])
-    w.writerow(["host", "alive", "ips", "cname", "port", "service", "http_status", "server", "title", "tls_cn", "banner"])
-    for h in db.hosts(scan_id):
-        ips = " ".join(h.get("ips", []))
-        if h.get("ports"):
-            for p in h["ports"]:
-                http = p.get("http") or {}
-                tls = p.get("tls") or {}
-                w.writerow([_csv_safe(x) for x in [
-                    h["host"], "yes" if h.get("alive") else "no", ips, h.get("cname") or "",
-                    p["port"], p.get("name", ""), http.get("status", ""), http.get("server", ""),
-                    http.get("title", ""), tls.get("cn", ""), (p.get("banner") or "")[:120]]])
-        else:
-            w.writerow([_csv_safe(x) for x in [
-                h["host"], "yes" if h.get("alive") else "no", ips, h.get("cname") or "", "", "", "", "", "", "", ""]])
+    cols = ["host", "status", "ips", "ptr", "asn", "org", "cc", "cname",
+            "port", "service", "http_status", "server", "title", "tech", "tls_cn", "banner", "findings"]
+    w.writerow(cols)
+    first = True
+    for h in sorted(hosts, key=lambda x: (report._status(x) != "takeover", report._status(x) != "exposed", not x.get("alive"), x["host"])):
+        if not first:
+            w.writerow([])                      # üres sor választja el a hostokat
+        first = False
+        info0 = (h.get("ips_info") or [{}])[0]
+        findings = "; ".join([f"{v.get('severity')}:{v.get('title')}" for v in (h.get("vuln") or [])]
+                             + (h.get("exposed_flags") or [])
+                             + ([f"takeover:{h['takeover']['service']}"] if h.get("takeover", {}).get("service") else []))
+        hostcells = [h["host"], report._status(h), " ".join(h.get("ips", [])), info0.get("ptr") or "",
+                     (f"AS{info0['asn']}" if info0.get("asn") else ""), info0.get("org") or "", info0.get("cc") or "",
+                     h.get("cname") or ""]
+        ports = h.get("ports") or []
+        if not ports:
+            w.writerow([_csv_safe(x) for x in hostcells + ["", "", "", "", "", "", "", "", findings]])
+            continue
+        for idx, p in enumerate(ports):
+            http = p.get("http") or {}
+            tls = p.get("tls") or {}
+            lead = hostcells if idx == 0 else ["", "", "", "", "", "", "", ""]   # host-mezők csak az első sorban
+            w.writerow([_csv_safe(x) for x in lead + [
+                p["port"], p.get("name", ""), http.get("status", ""), http.get("server", ""),
+                http.get("title", ""), ", ".join(p.get("tech", [])), tls.get("cn", ""),
+                (p.get("banner") or "")[:120], findings if idx == 0 else ""]])
     return Response(buf.getvalue(), media_type="text/csv",
                     headers={"Content-Disposition": f'attachment; filename="recon_{s["domain"]}_{scan_id}.csv"'})
