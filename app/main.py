@@ -227,6 +227,14 @@ async def api_export_md(scan_id: str):
                     headers={"Content-Disposition": f'attachment; filename="recon_{s["domain"]}_{scan_id}.md"'})
 
 
+@app.get("/api/export/{scan_id}.xlsx")
+async def api_export_xlsx(scan_id: str):
+    s, hosts = _scan_for_export(scan_id)
+    data = report.build_xlsx(s, hosts)
+    return Response(data, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": f'attachment; filename="recon_{s["domain"]}_{scan_id}.xlsx"'})
+
+
 def _csv_safe(v) -> str:
     """CSV-képletinjekció ellen: a =,+,-,@ (és vezető tab/CR) kezdetű cellát aposztróffal semlegesítjük."""
     s = "" if v is None else str(v)

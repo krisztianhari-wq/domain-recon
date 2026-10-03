@@ -5,6 +5,7 @@ takeover) jól elkülönítve, átlátható szekciókban jelenjenek meg — ne e
 """
 from __future__ import annotations
 
+import io
 import time
 
 
@@ -243,3 +244,122 @@ def build_markdown(scan: dict, hosts: list[dict]) -> str:
     L.append("---")
     L.append("*sadrobot · domain-recon · csak engedélyezett célpontra*")
     return "\n".join(L)
+
+
+# ---------------- XLSX (formázott, hosztonként csoportosítva; sadrobot paletta, nem Yettel) ----------------
+# Semleges paletta: sötét kékeszöld fejléc, cián akcentcsík, halvány host-sávozás.
+_DARK, _ACCENT, _PALE = "0E2733", "0B8FA0", "E7F2F6"
+_X_HEADERS = ["Host", "Alive", "IP Address(es)", "CNAME", "Port", "Service",
+              "HTTP Status", "Server", "Page Title", "TLS CN", "Banner"]
+_X_WIDTHS = [39, 8, 49, 39, 8, 14, 13, 34, 34, 32, 37]
+_X_CENTER = {2, 5, 7}
+_X_NUM = {5, 7}
+_X_STATUS = [(200, 299, "D6EEDD", "1F8A4C"), (300, 399, "DCEBF3", "1F5E80"),
+             (400, 499, "FBE6CF", "9A6A12"), (500, 599, "F6D9D5", "B02A1E")]
+
+
+def _x_rows(hosts: list[dict]) -> list[list]:
+    """Egy sor portonként; a host-mezők MINDEN során kitöltve (a hostonkénti sávozás így működik)."""
+    order = {"takeover": 0, "exposed": 1, "live": 2, "dead": 3}
+    out = []
+    for h in sorted(hosts, key=lambda x: (order[_status(x)], x["host"])):
+        alive = "yes" if h.get("alive") else "no"
+        ips = " ".join(h.get("ips", []))
+        cname = h.get("cname") or ""
+        ports = h.get("ports") or []
+        if not ports:
+            out.append([h["host"], alive, ips, cname, "", "", "", "", "", "", ""])
+            continue
+        for p in ports:
+            http = p.get("http") or {}
+            tls = p.get("tls") or {}
+            out.append([h["host"], alive, ips, cname, p["port"], p.get("name", ""),
+                        http.get("status", ""), http.get("server", ""), http.get("title", ""),
+                        tls.get("cn", ""), (p.get("banner") or "")[:200]])
+    return out
+
+
+def build_xlsx(scan: dict, hosts: list[dict], classification: str = "Confidential") -> bytes:
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.styles.differential import DifferentialStyle
+    from openpyxl.formatting.rule import Rule, FormulaRule, CellIsRule
+    from openpyxl.comments import Comment
+
+    def fill(c):
+        return PatternFill(start_color=c, end_color=c, fill_type="solid")
+
+    domain = scan.get("domain", "")
+    scan_id = scan.get("id", "")
+    ts = _fmt_dt(scan.get("created"))
+    data = _x_rows(hosts)
+    first, last = 5, max(5, 4 + len(data))
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = f"recon_{domain}_{scan_id}"[:31]
+    ws.sheet_view.showGridLines = False
+    ws.sheet_properties.tabColor = _DARK
+
+    ws["A1"] = f"Domain Recon — {domain}"
+    ws["A1"].font = Font(name="Calibri", size=18, bold=True, color=_DARK)
+    ws["K1"] = classification
+    ws["K1"].font = Font(name="Calibri", size=10, color="000000")
+    ws["K1"].alignment = Alignment(horizontal="right")
+    ws["A2"] = ('="External attack-surface scan   ·   "&COUNTA($A$5:$A$%d)&'
+                '"   records   ·   Scan %s   ·   ID %s"') % (last, ts, scan_id)
+    ws["A2"].font = Font(name="Calibri", size=10, color=_DARK)
+    ws["A2"].comment = Comment(f"domain-recon scan · domain {domain} · id {scan_id} · {ts} · "
+                               f"v{scan.get('version','')} {scan.get('build','')}".strip(), "recon")
+    for c in range(1, 12):
+        ws.cell(3, c).fill = fill(_ACCENT)
+    ws.row_dimensions[3].height = 6
+
+    for c, h in enumerate(_X_HEADERS, 1):
+        cell = ws.cell(4, c, h)
+        cell.fill = fill(_DARK)
+        cell.font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+        cell.alignment = Alignment(vertical="center")
+    ws.row_dimensions[4].height = 22
+
+    for r, row in enumerate(data, first):
+        for c in range(1, 12):
+            v = row[c - 1] if c - 1 < len(row) else ""
+            v = None if v == "" else v
+            if v is not None and c in _X_NUM:
+                try:
+                    v = int(v)
+                except (ValueError, TypeError):
+                    pass
+            cell = ws.cell(r, c, v)
+            cell.font = Font(name="Calibri", size=11)
+            cell.alignment = Alignment(vertical="center",
+                                       horizontal="center" if c in _X_CENTER else None)
+
+    for i, w in enumerate(_X_WIDTHS):
+        ws.column_dimensions[chr(65 + i)].width = w
+    ws.freeze_panes = "A5"
+    ws.auto_filter.ref = f"A4:K{last}"
+
+    body, gcol = f"A{first}:K{last}", f"G{first}:G{last}"
+    prio = 1
+    for lo, hi, bg, fc in _X_STATUS:
+        rule = CellIsRule(operator="between", formula=[str(lo), str(hi)], fill=fill(bg), font=Font(color=fc))
+        rule.priority = prio
+        prio += 1
+        ws.conditional_formatting.add(gcol, rule)
+    divider = Rule(type="expression", formula=["$A5<>$A4"],
+                   dxf=DifferentialStyle(border=Border(top=Side(style="thin", color=_DARK))))
+    divider.priority = prio
+    prio += 1
+    ws.conditional_formatting.add(body, divider)
+    band = FormulaRule(formula=["ISODD(SUMPRODUCT(--($A$5:$A5<>$A$4:$A4)))"], fill=fill(_PALE))
+    band.priority = prio
+    ws.conditional_formatting.add(body, band)
+
+    ws.oddHeader.right.text = classification
+    ws.oddFooter.right.text = "&P"
+
+    out = io.BytesIO()
+    wb.save(out)
+    return out.getvalue()

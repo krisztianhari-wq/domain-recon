@@ -21,6 +21,7 @@ ARGS=(--noconfirm --clean --name "$NAME" --windowed
       --collect-submodules fastapi --collect-submodules starlette
       --collect-all anyio --collect-submodules httpx --collect-submodules httpcore
       --collect-all pydantic --collect-all pydantic_core
+      --collect-all openpyxl
       --add-data "app/static${SEP}app/static"
       --hidden-import app.main --hidden-import app.engine --hidden-import app.fingerprint
       --hidden-import app.ports --hidden-import app.db --hidden-import app.netchecks

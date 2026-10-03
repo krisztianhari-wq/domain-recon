@@ -61,6 +61,7 @@ async function tick() {
   scan = s; hosts = s.hosts || [];
   renderProgress(s); renderActive(s); renderStats(); renderPosture(s); renderHosts();
   $("#md").href = `/api/export/${current}.md`;
+  $("#xlsx").href = `/api/export/${current}.xlsx`;
   $("#csv").href = `/api/export/${current}.csv`;
   $("#json").href = `/api/export/${current}.json`;
   $("#graphlink").href = `/graph#${current}`;
