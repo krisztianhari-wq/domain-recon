@@ -21,7 +21,7 @@ const I18N = {
     wildcard_warn: "Wildcard DNS aktív ({0}) — a „*.” bármire feloldhat; az ilyen hostok jelölve.",
     // aktív panel
     active_title: "Aktív vizsgálat", active_help: "A felderített hostok megérintése: portscan, HTTP/TLS + technológia-ujjlenyomat, takeover-megerősítés.",
-    active_go: "Aktív vizsgálat indítása", active_running: "Aktív vizsgálat fut…", active_done: "Aktív vizsgálat kész",
+    active_go: "Aktív vizsgálat indítása", active_hint: "A passzív felderítés alig talált hostot — a domain feltehetően wildcard-tanúsítványt használ vagy nincs apex-rekordja. Kapcsold be a DNS-brute-ot (előre bepipálva), hogy a gyakori aldomének (pl. app, api) is előkerüljenek.", active_running: "Aktív vizsgálat fut…", active_done: "Aktív vizsgálat kész",
     o_ports: "Portok", o_intensity: "Intenzitás", o_extra: "Egyéb",
     p_service: "Szolgáltatás", p_common: "Gyakori (~1100)", p_full: "Teljes (1–65535)", p_custom: "Egyedi",
     ph_custom: "22,80,443,8000-8100",
@@ -59,7 +59,7 @@ const I18N = {
     p_mx: "MX", p_ns: "NS", p_wildcard: "Wildcard DNS", p_present: "present", p_missing: "missing", p_none: "none",
     wildcard_warn: "Wildcard DNS active ({0}) — “*.” may resolve anything; such hosts are flagged.",
     active_title: "Active scan", active_help: "Touches the discovered hosts: port scan, HTTP/TLS + technology fingerprint, takeover confirmation.",
-    active_go: "Start active scan", active_running: "Active scan running…", active_done: "Active scan done",
+    active_go: "Start active scan", active_hint: "Passive discovery found almost no hosts — the domain likely uses a wildcard certificate or has no apex record. Enable DNS brute-force (pre-checked) to surface common subdomains (e.g. app, api).", active_running: "Active scan running…", active_done: "Active scan done",
     o_ports: "Ports", o_intensity: "Intensity", o_extra: "Extra",
     p_service: "Service", p_common: "Common (~1100)", p_full: "Full (1–65535)", p_custom: "Custom",
     ph_custom: "22,80,443,8000-8100",

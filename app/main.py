@@ -90,14 +90,17 @@ async def guard(request: Request, call_next):
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 
+_NOCACHE = {"Cache-Control": "no-cache"}
+
+
 @app.get("/")
 async def index():
-    return FileResponse(os.path.join(STATIC, "index.html"))
+    return FileResponse(os.path.join(STATIC, "index.html"), headers=_NOCACHE)
 
 
 @app.get("/graph")
 async def graph():
-    return FileResponse(os.path.join(STATIC, "graph.html"))
+    return FileResponse(os.path.join(STATIC, "graph.html"), headers=_NOCACHE)
 
 
 @app.get("/healthz")

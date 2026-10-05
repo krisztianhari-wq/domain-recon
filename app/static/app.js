@@ -5,7 +5,7 @@ const $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
 const L = () => t("locale");
 
-let current = null, poll = null, hosts = [], scan = {}, liveFilter = "all";
+let current = null, poll = null, hosts = [], scan = {}, liveFilter = "all", bruteSuggested = false;
 
 function segValue(id) { const b = $(`#${id} button.on`); return b ? b.dataset.v : null; }
 $$("#ports button, #intensity button, #livefilter button").forEach(b => {
@@ -21,6 +21,7 @@ $$("#ports button, #intensity button, #livefilter button").forEach(b => {
 async function startScan() {
   const domain = $("#domain").value.trim();
   if (!domain) { $("#domain").focus(); return; }
+  bruteSuggested = false;
   $("#go").disabled = true;
   try {
     const r = await fetch("/api/scan", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({domain})});
@@ -88,6 +89,19 @@ function renderProgress(s) {
 function renderActive(s) {
   const passiveDone = ["done", "error", "canceled"].includes(s.status);
   $("#activecard").classList.toggle("hide", !passiveDone || s.status === "error");
+  // jelzés: ha a passzív csak az apexet találta / semmi sem él → DNS-brute kell (wildcard cert / nincs apex-rekord)
+  const hint = $("#activehint");
+  const notRun = !["queued", "running", "done"].includes(s.active_status);
+  const liveCount = hosts.filter(h => h.alive).length;
+  const sparse = hosts.length <= 1 || liveCount === 0;
+  const showHint = passiveDone && s.status === "done" && notRun && sparse;
+  if (hint) {
+    hint.classList.toggle("hide", !showHint);
+    if (showHint) {
+      hint.textContent = t("active_hint");
+      if (!bruteSuggested) { $("#brute").checked = true; bruteSuggested = true; }   // egyszer bepipáljuk
+    }
+  }
   const running = ["queued", "running"].includes(s.active_status);
   $("#activego").disabled = running;
   $("#activego").textContent = running ? t("active_running") : (s.active_status === "done" ? t("active_done") + " · " + t("active_go") : t("active_go"));
@@ -312,7 +326,7 @@ async function loadHistory() {
 }
 
 async function openScan(id) {
-  current = id;
+  current = id; bruteSuggested = false;
   try { history.replaceState(null, "", `#${id}`); } catch (e) { /* no-op */ }
   $("#results").classList.remove("hide");
   startPoll();
