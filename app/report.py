@@ -64,6 +64,9 @@ def _host_clean(h: dict) -> dict:
         out["vulnerabilities"] = h["vuln"]
     if h.get("takeover") and h["takeover"].get("service"):
         out["takeover"] = h["takeover"]
+    if h.get("pq") and h["pq"].get("kex"):
+        pq = h["pq"]
+        out["quantum"] = {"verdict": pq.get("verdict"), "key_exchange": pq.get("kex"), "certificate": pq.get("cert")}
     if h.get("tls_sans"):
         out["tls_sans"] = h["tls_sans"]
     return out
@@ -125,6 +128,23 @@ def _host_md(h: dict) -> str:
     if h.get("tech"):
         lines.append("")
         lines.append("**Technológia:** " + ", ".join(h["tech"]))
+    # kvantum-reziliencia
+    if h.get("pq") and h["pq"].get("kex"):
+        pq = h["pq"]
+        k, c = pq.get("kex", {}), pq.get("cert", {})
+        vmap = {"hybrid": "kvantum-biztos (hibrid ML-KEM)", "classical": "klasszikus — HNDL-kockázat", "unknown": "ismeretlen"}
+        det = []
+        if k.get("group"):
+            det.append(f"kulcscsere {k['group']}")
+        if k.get("tls"):
+            det.append(f"TLS {k['tls']}")
+        if c.get("key_alg"):
+            det.append(f"cert {c['key_alg']}" + (f" {c['key_bits']}" if c.get("key_bits") else ""))
+        if c.get("sig_alg"):
+            det.append(f"aláírás {c['sig_alg']}")
+        lines.append("")
+        lines.append(f"**Kvantum-reziliencia (TLS):** {vmap.get(pq.get('verdict'), '?')}"
+                     + (" · " + " · ".join(det) if det else ""))
     # takeover
     if h.get("takeover") and h["takeover"].get("service"):
         t = h["takeover"]

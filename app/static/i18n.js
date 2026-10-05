@@ -33,7 +33,7 @@ const I18N = {
     col_graph: "Gráf", col_md: "Jelentés", col_xlsx: "XLSX", col_graph: "Graph", col_md: "Report", col_xlsx: "XLSX", col_export_json: "JSON", col_export_csv: "CSV",
     none: "Nincs találat.", no_hosts: "Nincs host.",
     d_ips: "IP-címek", d_cname: "CNAME", d_source: "Forrás", d_ports: "Nyitott portok", d_sans: "TLS SAN (új nevek)",
-    d_tech: "Technológia", d_exposed: "Kitett szolgáltatás", d_takeover: "Lehetséges takeover", d_vuln: "Kitettség / sebezhetőség",
+    d_tech: "Technológia", d_exposed: "Kitett szolgáltatás", d_takeover: "Lehetséges takeover", d_vuln: "Kitettség / sebezhetőség", d_pq: "Kvantum-reziliencia (TLS)", m_pq: "PQ kulcscsere",
     t_port: "Port", t_svc: "Szolgáltatás", t_detail: "Részlet", t_rtt: "RTT",
     live_yes: "élő", live_no: "nem élő", exposed: "kitett", wild: "wildcard", confirmed: "megerősítve", suspected: "gyanús",
     hist_title: "Korábbi vizsgálatok", hist_empty: "Még nincs vizsgálat.",
@@ -70,7 +70,7 @@ const I18N = {
     col_export_json: "JSON", col_export_csv: "CSV",
     none: "No matches.", no_hosts: "No hosts.",
     d_ips: "IP addresses", d_cname: "CNAME", d_source: "Source", d_ports: "Open ports", d_sans: "TLS SAN (new names)",
-    d_tech: "Technology", d_exposed: "Exposed service", d_takeover: "Possible takeover", d_vuln: "Exposure / vulnerability",
+    d_tech: "Technology", d_exposed: "Exposed service", d_takeover: "Possible takeover", d_vuln: "Exposure / vulnerability", d_pq: "Quantum resilience (TLS)", m_pq: "PQ key exchange",
     t_port: "Port", t_svc: "Service", t_detail: "Detail", t_rtt: "RTT",
     live_yes: "live", live_no: "dead", exposed: "exposed", wild: "wildcard", confirmed: "confirmed", suspected: "suspected",
     hist_title: "Previous scans", hist_empty: "No scans yet.",
@@ -155,6 +155,7 @@ const EXPLAIN = {
       takeover: "Lógó CNAME egy külső szolgáltatásra, amely átvehető lehet, ha a szolgáltatásnál nincs beállítva.",
       wildcard: "A domain „*.” rekordja bármely aldomént feloldja — a találat lehet, hogy nem valódi host.",
       exposed: "Kockázatos szolgáltatás kívülről elérhető — érdemes tűzfal mögé tenni.",
+      pq: "A TLS kulcscseréje kvantum-biztos-e. Klasszikus (RSA/ECDHE) esetén a ma lehallgatott forgalom később kvantumgéppel visszafejthető (harvest-now, decrypt-later); a hibrid ML-KEM ez ellen véd.",
     },
     en: {
       spf: "SPF – which servers may send mail for the domain (anti-spoofing).",
@@ -167,6 +168,7 @@ const EXPLAIN = {
       takeover: "Dangling CNAME to an external service that may be claimable if unconfigured there.",
       wildcard: "The domain's “*.” record resolves any subdomain — a hit may not be a real host.",
       exposed: "A risky service is reachable externally — consider putting it behind a firewall.",
+      pq: "Whether the TLS key exchange is quantum-safe. With classical (RSA/ECDHE) traffic captured today can be decrypted later by a quantum computer (harvest-now, decrypt-later); hybrid ML-KEM protects against this.",
     },
   },
 };

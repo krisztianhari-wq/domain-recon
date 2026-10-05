@@ -112,13 +112,20 @@ function renderStats() {
   const tk = hosts.filter(hasTakeover).length;
   const openPorts = hosts.reduce((a, h) => a + (h.ports || []).length, 0);
   const exposed = hosts.filter(isExposed).length;
+  const pqAssessed = hosts.filter(h => h.pq && h.pq.kex);
+  const pqSafe = pqAssessed.filter(h => h.pq.kex.status === "pq").length;
   $("#stats").classList.remove("hide");
-  $("#stats").innerHTML = `
+  let html = `
     <div class="stat accent"><b>${t("m_hosts")}</b><span>${hosts.length}</span></div>
     <div class="stat good"><b>${t("m_live")}</b><span>${live}</span></div>
     <div class="stat ${tk ? "bad" : ""}" data-tip="${esc(explainRec("takeover"))}"><b>${t("m_takeover")}</b><span>${tk}</span></div>
     <div class="stat ${exposed ? "warn" : ""}"><b>${t("m_exposed")}</b><span>${exposed}</span></div>
     <div class="stat"><b>${t("m_ports")}</b><span>${openPorts}</span></div>`;
+  if (pqAssessed.length) {
+    const cls = pqSafe === pqAssessed.length ? "good" : pqSafe ? "warn" : "bad";
+    html += `<div class="stat ${cls}" data-tip="${esc(explainRec("pq"))}"><b>${t("m_pq")}</b><span>${pqSafe}/${pqAssessed.length}</span></div>`;
+  }
+  $("#stats").innerHTML = html;
 }
 
 function postCell(key, present, value) {
@@ -199,6 +206,23 @@ function badges(h) {
   return b;
 }
 
+const PQ_VERDICT = {hybrid: {hu: "kvantum-biztos (hibrid)", en: "quantum-safe (hybrid)"},
+                    classical: {hu: "klasszikus — HNDL-kockázat", en: "classical — HNDL risk"},
+                    unknown: {hu: "ismeretlen", en: "unknown"}};
+function pqBlock(pq) {
+  const k = pq.kex || {}, c = pq.cert || {};
+  const cls = pq.verdict === "hybrid" ? "good" : pq.verdict === "classical" ? "warn" : "";
+  const lang = L().startsWith("hu") ? "hu" : "en";
+  const vtxt = (PQ_VERDICT[pq.verdict] || PQ_VERDICT.unknown)[lang];
+  const parts = [];
+  if (k.group) parts.push(`${lang === "hu" ? "kulcscsere" : "key exchange"}: ${esc(k.group)}`);
+  if (k.tls) parts.push(`TLS ${esc(k.tls)}`);
+  if (c.key_alg) parts.push(`cert: ${esc(c.key_alg)}${c.key_bits ? " " + c.key_bits : ""}`);
+  if (c.sig_alg) parts.push(`${lang === "hu" ? "aláírás" : "signature"}: ${esc(c.sig_alg)}`);
+  return `<div class="kv" data-tip="${esc(explainRec("pq"))}"><b>${t("d_pq")}:</b> `
+    + `<span class="bdg ${cls}">${esc(vtxt)}</span> ${parts.map(p => `<span class="tag">${p}</span>`).join(" ")}</div>`;
+}
+
 function portChip(p) {
   const cls = !p.expected ? (p.name && /HTTP|HTTPS/i.test(p.name) ? "web" : "svc") : "exp";
   return `<span class="port ${cls}" data-tip="${esc(explainPort(p.port, p.name))}">${p.port}${p.name && p.name !== "?" ? " " + esc(p.name) : ""}</span>`;
@@ -234,6 +258,7 @@ function renderDetail(h) {
   const tech = (h.tech && h.tech.length) ? `<div class="kv"><b>${t("d_tech")}:</b> ${h.tech.map(x => `<span class="tag">${esc(x)}</span>`).join(" ")}</div>` : "";
   const exp = (h.exposed_flags && h.exposed_flags.length) ? `<div class="kv" data-tip="${esc(explainRec("exposed"))}"><b>${t("d_exposed")}:</b> ${h.exposed_flags.map(x => `<span class="tag san">${esc(x)}</span>`).join(" ")}</div>` : "";
   const vuln = (h.vuln && h.vuln.length) ? `<div class="kv"><b>${t("d_vuln")}:</b> ${h.vuln.map(v => `<span class="bdg ${SEVCLS[v.severity] || ""}" data-tip="${esc(v.evidence || "")}">${esc(v.severity)}: ${esc(v.title)}</span>`).join(" ")}</div>` : "";
+  const pq = h.pq && h.pq.kex ? pqBlock(h.pq) : "";
   const sans = (h.tls_sans && h.tls_sans.length) ? `<div class="kv"><b>${t("d_sans")}:</b> ${h.tls_sans.map(s => `<span class="tag san">${esc(s)}</span>`).join(" ")}</div>` : "";
 
   let portsTbl = "";
@@ -257,7 +282,7 @@ function renderDetail(h) {
   return `<div class="detail">
     <div class="kv">${h.cname ? `<span data-tip="${esc(explainRec("cname"))}"><b>${t("d_cname")}:</b> ${esc(h.cname)}</span>` : ""}
       <span><b>${t("d_source")}:</b> ${h.source_brute ? "brute" : "passzív"}</span></div>
-    ${ipsTable}${tk}${vuln}${tech}${exp}${sans}${portsTbl}</div>`;
+    ${ipsTable}${tk}${vuln}${pq}${tech}${exp}${sans}${portsTbl}</div>`;
 }
 
 // ---- előzmények ----

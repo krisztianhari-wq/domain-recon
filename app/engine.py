@@ -29,9 +29,10 @@ import httpx
 from . import enrich
 from . import fingerprint as fp
 from . import netchecks as nc
+from . import pqscan
 from . import sources
 from . import vulncheck
-from .ports import EXPECTED_WEB, resolve_profile, svc
+from .ports import EXPECTED_WEB, TLS_PORTS, resolve_profile, svc
 
 UA = "domain-recon/0.2 (+sadrobot; attack-surface mapping)"
 
@@ -262,6 +263,15 @@ class Engine:
                                     client, host, ips[0], [p["port"] for p in ports_out], timeout=self.ftimeout)
                             except Exception:  # noqa: BLE001
                                 d["vuln"] = []
+                            # kvantum-reziliencia a TLS-portra (443 előnyben), ha van
+                            tls_open = [p["port"] for p in ports_out if p["port"] in TLS_PORTS]
+                            if tls_open:
+                                async with self._gsem:
+                                    try:
+                                        d["pq"] = await pqscan.assess(
+                                            host, ips[0], 443 if 443 in tls_open else tls_open[0], timeout=self.ftimeout)
+                                    except Exception:  # noqa: BLE001
+                                        pass
                         await self._confirm_takeover(client, host, d)
                         sans = sorted({s.lower().lstrip("*.") for p in ports_out
                                        for s in (p.get("tls", {}) or {}).get("sans", [])
