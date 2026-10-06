@@ -13,3 +13,4 @@ dist/
 *.spec
 out/
 app/BUILD
+CLAUDE.local.md
