@@ -84,6 +84,8 @@ async def guard(request: Request, call_next):
     resp = await call_next(request)
     for k, v in SEC_HEADERS.items():
         resp.headers.setdefault(k, v)
+    if request.url.path.startswith("/static/"):   # a statikus JS/CSS mindig revalidáljon (ne ragadjon be régi app.js)
+        resp.headers["Cache-Control"] = "no-cache"
     return resp
 
 
