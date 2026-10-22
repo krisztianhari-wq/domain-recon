@@ -1,0 +1,35 @@
+<!doctype html><html lang="hu"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow">
+<title>domain-recon — belépés</title>
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/app.css?v=__VER__">
+<style>
+  .gate{min-height:100vh;display:grid;place-items:center;padding:24px}
+  .gatebox{width:100%;max-width:380px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    padding:26px 24px;display:flex;flex-direction:column;gap:14px}
+  .gatebox .mark{display:grid;place-items:center;color:var(--accent);margin-bottom:2px}
+  .gatebox h1{font-size:19px;margin:0}
+  .gatebox p{margin:0;color:var(--ink-3);font-size:13px}
+  .gatebox label{font:600 11px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
+  .gatebox input{font:15px var(--mono);padding:12px 14px;border:1px solid var(--line);border-radius:10px;
+    background:var(--panel-2);color:var(--ink);width:100%}
+  .gatebox button{font:600 14px var(--display);padding:12px 16px;border:1px solid var(--accent);border-radius:10px;
+    background:var(--accent);color:#06222a;cursor:pointer}
+  .gatebox button:disabled{opacity:.6;cursor:default}
+  .gate-err{color:var(--bad);font-size:13px;min-height:18px;margin:0}
+  .gate-foot{color:var(--ink-3);font:11px var(--mono);text-align:center;letter-spacing:.06em}
+</style></head>
+<body><div class="gate"><form class="gatebox" id="gateform" autocomplete="off">
+  <div class="mark" aria-hidden="true">
+    <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+      <circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/><circle cx="12" cy="12" r="3.5" fill="currentColor" stroke="none"/></svg>
+  </div>
+  <h1>domain-recon</h1>
+  <p data-i18n="gate_help">Add meg a közös belépőkódot a folytatáshoz.</p>
+  <label for="secret" data-i18n="gate_label">Belépőkód</label>
+  <input type="password" id="secret" name="secret" required autofocus autocomplete="current-password">
+  <p class="gate-err" id="gateerr" role="alert"></p>
+  <button type="submit" id="gatebtn" data-i18n="gate_go">Belépés</button>
+  <div class="gate-foot">sadrobot · domain-recon</div>
+</form></div>
+<script src="/static/gate.js" defer></script></body></html>

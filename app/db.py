@@ -14,6 +14,7 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS scans(
   id        TEXT PRIMARY KEY,
   domain    TEXT NOT NULL,
+  workspace TEXT,                   -- cégcsoportos munkaterület (izoláció); NULL = megosztott/klasszikus
   opts      TEXT NOT NULL,
   status    TEXT NOT NULL,          -- (passzív) queued|running|done|error|canceled
   stage     TEXT,
@@ -65,6 +66,7 @@ class DB:
         """Hiányzó oszlopok pótlása régebbi adatbázisban (idempotens)."""
         have = {r["name"] for r in self._cx.execute("PRAGMA table_info(scans)").fetchall()}
         add = {
+            "workspace": "TEXT",
             "note": "TEXT", "active_status": "TEXT DEFAULT 'none'", "active_stage": "TEXT",
             "active_done": "INTEGER DEFAULT 0", "active_total": "INTEGER DEFAULT 0",
             "posture": "TEXT", "wildcard": "TEXT",
@@ -75,11 +77,13 @@ class DB:
             if col not in have:
                 self._cx.execute(f"ALTER TABLE scans ADD COLUMN {col} {decl}")
 
+    _ALL = object()   # prune: szentinel az „összes munkaterület" (globális) jelzésére
+
     # ---- scans ----
-    def create_scan(self, scan_id: str, domain: str, opts: dict) -> None:
+    def create_scan(self, scan_id: str, domain: str, opts: dict, workspace: str | None = None) -> None:
         self._cx.execute(
-            "INSERT INTO scans(id,domain,opts,status,stage,created) VALUES(?,?,?,?,?,?)",
-            (scan_id, domain, json.dumps(opts), "queued", "queued", int(time.time())),
+            "INSERT INTO scans(id,domain,workspace,opts,status,stage,created) VALUES(?,?,?,?,?,?,?)",
+            (scan_id, domain, workspace, json.dumps(opts), "queued", "queued", int(time.time())),
         )
         self._cx.commit()
 
@@ -143,10 +147,16 @@ class DB:
         d["wildcard"] = json.loads(d["wildcard"]) if d.get("wildcard") else []
         return d
 
-    def recent_scans(self, limit: int = 40) -> list[dict]:
-        rows = self._cx.execute(
-            "SELECT id,domain,status,active_status,cve_status,n_hosts,n_live,n_ports,created,finished FROM scans "
-            "ORDER BY created DESC LIMIT ?", (limit,)).fetchall()
+    def recent_scans(self, limit: int = 40, workspace=_ALL) -> list[dict]:
+        """A legutóbbi scanek. `workspace`=_ALL → összes (klasszikus); egyébként csak az adott
+        munkaterületé (None = a NULL-munkaterületűek)."""
+        cols = ("SELECT id,domain,status,active_status,cve_status,n_hosts,n_live,n_ports,created,finished "
+                "FROM scans")
+        if workspace is self._ALL:
+            rows = self._cx.execute(cols + " ORDER BY created DESC LIMIT ?", (limit,)).fetchall()
+        else:
+            rows = self._cx.execute(cols + " WHERE workspace IS ? ORDER BY created DESC LIMIT ?",
+                                    (workspace, limit)).fetchall()
         return [dict(r) for r in rows]
 
     def delete_scan(self, scan_id: str) -> None:
@@ -154,10 +164,17 @@ class DB:
         self._cx.execute("DELETE FROM scans WHERE id=?", (scan_id,))
         self._cx.commit()
 
-    def prune(self, keep: int = 60) -> None:
-        """Legfeljebb `keep` scan marad; a régebbiek (eredményestül) törlődnek."""
-        old = self._cx.execute(
-            "SELECT id FROM scans ORDER BY created DESC LIMIT -1 OFFSET ?", (keep,)).fetchall()
+    def prune(self, keep: int = 60, workspace=_ALL) -> None:
+        """Legfeljebb `keep` scan marad; a régebbiek (eredményestül) törlődnek.
+        `workspace`=_ALL → globálisan; egyébként csak az adott munkaterületen belül (fairség:
+        egy felhasználó sok scanje ne söpörje ki a másikét)."""
+        if workspace is self._ALL:
+            old = self._cx.execute(
+                "SELECT id FROM scans ORDER BY created DESC LIMIT -1 OFFSET ?", (keep,)).fetchall()
+        else:
+            old = self._cx.execute(
+                "SELECT id FROM scans WHERE workspace IS ? ORDER BY created DESC LIMIT -1 OFFSET ?",
+                (workspace, keep)).fetchall()
         for r in old:
             self.delete_scan(r["id"])
 

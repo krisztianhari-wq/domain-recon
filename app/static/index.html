@@ -29,8 +29,11 @@
   <section class="card search">
     <div class="searchbar">
       <input type="text" id="domain" autocomplete="off" autocapitalize="off" spellcheck="false" data-i18n-ph="ph_domain" placeholder="example.com">
+      <button class="btn" id="importbtn" type="button" data-i18n="import_btn">IP-k XLS/CSV-ből</button>
       <button class="go" id="go" type="button" data-i18n="go">Passzív feltérképezés</button>
     </div>
+    <input type="file" id="importfile" accept=".xlsx,.xlsm,.csv,.txt,.tsv" class="hide">
+    <p class="note hide" id="importnote"></p>
     <p class="note warn" data-i18n="authz">Csak engedélyezett célpontot vizsgálj.</p>
   </section>
 
@@ -146,6 +149,8 @@
 
   <section class="card">
     <h2 data-i18n="hist_title">Korábbi vizsgálatok</h2>
+    <p class="sub wsnote hide" id="wsnote"><span data-i18n="ws_note">Privát munkaterület — csak a te vizsgálataid látszanak itt.</span>
+      <button class="btn" id="wscopy" type="button" data-i18n="ws_copy">Munkaterület-link másolása</button></p>
     <div class="hist" id="history"></div>
   </section>
 </main>
