@@ -4,6 +4,8 @@ const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
 const L = () => t("locale");
+// Találat nyelvfüggő mezője (title/evidence): EN-nél a *_en, ha van; különben a HU/alap.
+const fl = (v, key) => (LANG === "en" ? (v[key + "_en"] || v[key]) : v[key]) || "";
 
 let current = null, poll = null, hosts = [], scan = {}, liveFilter = "all", bruteSuggested = false;
 
@@ -261,8 +263,8 @@ function worstVuln(h) {
 function badges(h) {
   let b = "";
   if (hasTakeover(h)) { const st = h.takeover.confirmed ? t("confirmed") : t("suspected"); b += `<span class="bdg bad" data-tip="${esc(explainRec("takeover"))}">takeover: ${esc(h.takeover.service)} (${st})</span>`; }
-  (h.cve || []).forEach(v => { const c = v.cve && v.cve !== "—" ? " (" + esc(v.cve) + ")" : ""; b += `<span class="bdg ${SEVCLS[v.severity] || "bad"}" data-tip="${esc(v.evidence || v.title)}">${esc(v.severity)}: ${esc(v.title)}${c}</span>`; });
-  (h.vuln || []).forEach(v => { b += `<span class="bdg ${SEVCLS[v.severity] || ""}" data-tip="${esc(v.evidence || v.title)}">${esc(v.severity)}: ${esc(v.title)}</span>`; });
+  (h.cve || []).forEach(v => { const c = v.cve && v.cve !== "—" ? " (" + esc(v.cve) + ")" : ""; b += `<span class="bdg ${SEVCLS[v.severity] || "bad"}" data-tip="${esc(fl(v, "evidence") || fl(v, "title"))}">${esc(v.severity)}: ${esc(fl(v, "title"))}${c}</span>`; });
+  (h.vuln || []).forEach(v => { b += `<span class="bdg ${SEVCLS[v.severity] || ""}" data-tip="${esc(fl(v, "evidence") || fl(v, "title"))}">${esc(v.severity)}: ${esc(fl(v, "title"))}</span>`; });
   if (h.wildcard) b += `<span class="bdg" data-tip="${esc(explainRec("wildcard"))}">${t("wild")}</span>`;
   (h.exposed_flags || []).forEach(f => { b += `<span class="bdg warn" data-tip="${esc(explainRec("exposed"))}">${esc(f)}</span>`; });
   return b;
@@ -316,7 +318,7 @@ function cveBlock(h) {
     if (!items.length) return "";
     return `<div class="kv"><b>${label}:</b> ` + items.map(v => {
       const c = v.cve && v.cve !== "—" ? " (" + esc(v.cve) + ")" : "";
-      return `<span class="bdg ${SEVCLS[v.severity] || "bad"}" data-tip="${esc(v.evidence || "")}">${esc(v.severity)}: ${esc(v.title)}${c}</span>`;
+      return `<span class="bdg ${SEVCLS[v.severity] || "bad"}" data-tip="${esc(fl(v, "evidence"))}">${esc(v.severity)}: ${esc(fl(v, "title"))}${c}</span>`;
     }).join(" ") + "</div>";
   };
   return grp("version", t("d_cve_ver")) + grp("fingerprint", t("d_cve_fp"));
@@ -333,7 +335,7 @@ function renderDetail(h) {
      ${esc(h.takeover.service)} → ${esc(h.takeover.cname)} · ${h.takeover.confirmed ? t("confirmed") : t("suspected")}</div>` : "";
   const tech = (h.tech && h.tech.length) ? `<div class="kv"><b>${t("d_tech")}:</b> ${h.tech.map(x => `<span class="tag">${esc(x)}</span>`).join(" ")}</div>` : "";
   const exp = (h.exposed_flags && h.exposed_flags.length) ? `<div class="kv" data-tip="${esc(explainRec("exposed"))}"><b>${t("d_exposed")}:</b> ${h.exposed_flags.map(x => `<span class="tag san">${esc(x)}</span>`).join(" ")}</div>` : "";
-  const vuln = (h.vuln && h.vuln.length) ? `<div class="kv"><b>${t("d_vuln")}:</b> ${h.vuln.map(v => `<span class="bdg ${SEVCLS[v.severity] || ""}" data-tip="${esc(v.evidence || "")}">${esc(v.severity)}: ${esc(v.title)}</span>`).join(" ")}</div>` : "";
+  const vuln = (h.vuln && h.vuln.length) ? `<div class="kv"><b>${t("d_vuln")}:</b> ${h.vuln.map(v => `<span class="bdg ${SEVCLS[v.severity] || ""}" data-tip="${esc(fl(v, "evidence"))}">${esc(v.severity)}: ${esc(fl(v, "title"))}</span>`).join(" ")}</div>` : "";
   const cve = cveBlock(h);
   const pq = h.pq && h.pq.kex ? pqBlock(h.pq) : "";
   const sans = (h.tls_sans && h.tls_sans.length) ? `<div class="kv"><b>${t("d_sans")}:</b> ${h.tls_sans.map(s => `<span class="tag san">${esc(s)}</span>`).join(" ")}</div>` : "";

@@ -410,7 +410,7 @@ def build_xlsx(scan: dict, hosts: list[dict], classification: str = "Confidentia
 # ---------------- Nyomtatható HTML-jelentés (böngészőből PDF) ----------------
 _RT = {
  "hu": {"doc":"domain-recon jelentés","title":"Feltérképezési jelentés —","back":"← Vissza",
-   "print":"Nyomtatás / PDF mentés","md":"Markdown","content":"Tartalom",
+   "print":"Nyomtatás","pdf":"PDF letöltés","md":"Markdown","content":"Tartalom",
    "passive":"passzív","active":"aktív","cve":"CVE",
    "st_host":"Host","st_live":"Élő","st_tk":"Takeover","st_exp":"Kitett","st_ports":"Nyitott port","st_cve":"CVE-találat",
    "posture":"DNS / e-mail posture","present":"✓ van","missing":"✗ hiányzik","none":"✗ nincs","wildcard":"Wildcard DNS",
@@ -426,7 +426,7 @@ _RT = {
    "footer":"sadrobot · domain-recon · csak engedélyezett célpontra",
    "pr_full":"Teljes","pr_cve":"Csak CVE","pr_php":"PHP CVE","pr_apache":"Apache CVE","pr_conf":"Confluence CVE"},
  "en": {"doc":"domain-recon report","title":"Reconnaissance report —","back":"← Back",
-   "print":"Print / Save as PDF","md":"Markdown","content":"Content",
+   "print":"Print","pdf":"Download PDF","md":"Markdown","content":"Content",
    "passive":"passive","active":"active","cve":"CVE",
    "st_host":"Hosts","st_live":"Live","st_tk":"Takeover","st_exp":"Exposed","st_ports":"Open ports","st_cve":"CVE hits",
    "posture":"DNS / email posture","present":"✓ present","missing":"✗ missing","none":"✗ none","wildcard":"Wildcard DNS",
@@ -455,7 +455,14 @@ def _cve_match(v, flt):
     return flt.lower() in hay
 
 
-def _host_html(h: dict, t: dict, focus: str = "full", cvefilter: str = "") -> str:
+def _fl(v: dict, lang: str, key: str) -> str:
+    """A találat nyelvfüggő mezője (title/evidence): EN-nél a *_en, ha van; különben a HU/alap."""
+    if lang == "en":
+        return v.get(key + "_en") or v.get(key) or ""
+    return v.get(key) or ""
+
+
+def _host_html(h: dict, t: dict, lang: str = "hu", focus: str = "full", cvefilter: str = "") -> str:
     st = _status(h)
     cls = _BADGE_CLS[st]
     label = t["b_" + ("tk" if st == "takeover" else "exp" if st == "exposed" else st)]
@@ -476,8 +483,8 @@ def _host_html(h: dict, t: dict, focus: str = "full", cvefilter: str = "") -> st
         if not items:
             return
         li = "".join(f'<li class="sev-{E(str(v.get("severity","")))}"><b>{E(str(v.get("severity","")))}:</b> '
-                     f'{E(v.get("title",""))}{(" (" + E(v["cve"]) + ")") if v.get("cve") and v["cve"] != "—" else ""}'
-                     f'{(" — " + E(v["evidence"])) if v.get("evidence") else ""}</li>' for v in items)
+                     f'{E(_fl(v, lang, "title"))}{(" (" + E(v["cve"]) + ")") if v.get("cve") and v["cve"] != "—" else ""}'
+                     f'{(" — " + E(_fl(v, lang, "evidence"))) if _fl(v, lang, "evidence") else ""}</li>' for v in items)
         out.append(f'<p><b>{title}:</b></p><ul class="find">{li}</ul>')
 
     if focus == "cve":
@@ -581,7 +588,7 @@ def build_html(scan: dict, hosts: list[dict], lang: str = "hu", focus: str = "fu
     if focus == "cve":
         shown = [h for h in hosts if any(_cve_match(v, cvefilter) for v in (h.get("cve") or []))]
         shown.sort(key=lambda h: h["host"])
-        body = ("".join(_host_html(h, t, "cve", cvefilter) for h in shown)
+        body = ("".join(_host_html(h, t, lang, "cve", cvefilter) for h in shown)
                 if shown else f'<p class="meta">—</p>')
     else:
         order = {"takeover": 0, "exposed": 1, "live": 2, "dead": 3}
@@ -590,9 +597,9 @@ def build_html(scan: dict, hosts: list[dict], lang: str = "hu", focus: str = "fu
         dead = sorted([h for h in hosts if _status(h) == "dead"], key=lambda h: h["host"])
         body = ""
         if attn:
-            body += f'<h2>{t["attn"]}</h2>' + "".join(_host_html(h, t) for h in attn)
+            body += f'<h2>{t["attn"]}</h2>' + "".join(_host_html(h, t, lang) for h in attn)
         if live:
-            body += f'<h2>{t["live"]}</h2>' + "".join(_host_html(h, t) for h in live)
+            body += f'<h2>{t["live"]}</h2>' + "".join(_host_html(h, t, lang) for h in live)
         if dead:
             body += f'<h2>{t["dead"]}</h2><p class="meta">' + E(", ".join(h["host"] for h in dead)) + "</p>"
 
@@ -613,6 +620,7 @@ def build_html(scan: dict, hosts: list[dict], lang: str = "hu", focus: str = "fu
 <script src="/static/report-print.js" defer></script></head>
 <body><div class="page">
 <div class="bar no-print"><a href="/#{E(sid)}">{t["back"]}</a>
+<a class="dl" href="/api/export/{E(sid)}.pdf?lang={lang}&focus={focus}&cve={E(cvefilter)}">{t["pdf"]}</a>
 <button id="print" type="button">{t["print"]}</button>
 <a href="/api/export/{E(sid)}.md">{t["md"]}</a>
 <span class="pills">{langbar}</span></div>
@@ -625,3 +633,167 @@ def build_html(scan: dict, hosts: list[dict], lang: str = "hu", focus: str = "fu
 {body}
 <footer>{t["footer"]}</footer>
 </div></body></html>"""
+
+
+# ---------------- Szerveroldali PDF (reportlab) – nyomtatás nélkül letölthető ----------------
+def build_pdf(scan: dict, hosts: list[dict], lang: str = "hu", focus: str = "full", cve: str = "") -> bytes:
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import mm
+    from reportlab.lib import colors
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, KeepTogether
+
+    t = _RT.get(lang, _RT["hu"])
+    focus = "cve" if focus == "cve" else "full"
+    cvefilter = (cve or "").strip()
+    DARK, ACCENT, MUTED = colors.HexColor("#0E2733"), colors.HexColor("#0B8FA0"), colors.HexColor("#6a7b89")
+    SEVC = {"critical": colors.HexColor("#c0392b"), "high": colors.HexColor("#c0392b"),
+            "medium": colors.HexColor("#9a5b00"), "low": colors.HexColor("#9a5b00")}
+    ss = getSampleStyleSheet()
+    S = {
+        "brand": ParagraphStyle("brand", parent=ss["Normal"], fontName="Helvetica-Bold", fontSize=8,
+                                textColor=ACCENT, spaceAfter=2, leading=10),
+        "title": ParagraphStyle("title", parent=ss["Title"], fontName="Helvetica-Bold", fontSize=18,
+                                textColor=DARK, spaceAfter=2, leading=21),
+        "meta": ParagraphStyle("meta", parent=ss["Normal"], fontSize=8.5, textColor=MUTED, spaceAfter=8),
+        "h2": ParagraphStyle("h2", parent=ss["Normal"], fontName="Helvetica-Bold", fontSize=11, textColor=DARK,
+                             spaceBefore=12, spaceAfter=5, leading=14),
+        "h3": ParagraphStyle("h3", parent=ss["Normal"], fontName="Helvetica-Bold", fontSize=11, spaceAfter=2),
+        "n": ParagraphStyle("n", parent=ss["Normal"], fontSize=9.5, leading=13, spaceAfter=1),
+        "sm": ParagraphStyle("sm", parent=ss["Normal"], fontSize=8.5, textColor=MUTED, spaceAfter=3),
+        "find": ParagraphStyle("find", parent=ss["Normal"], fontSize=9.5, leading=13, leftIndent=8, spaceAfter=1),
+    }
+
+    def P(s, st="n"):
+        return Paragraph(E(str(s)), S[st])
+
+    story = [Paragraph("SADROBOT // RECON", S["brand"]),
+             Paragraph(f'{E(t["title"])} {E(scan.get("domain",""))}', S["title"])]
+    ver = (f"v{scan['version']}" + (f" ({scan['build']})" if scan.get("build") else "")) if scan.get("version") else ""
+    story.append(Paragraph(f'{_fmt_dt(scan.get("created"))} &middot; {E(ver)} &middot; '
+                           f'{t["passive"]}: {E(str(scan.get("status","?")))} &middot; {t["active"]}: {E(str(scan.get("active_status","none")))} '
+                           f'&middot; {t["cve"]}: {E(str(scan.get("cve_status","none")))}', S["meta"]))
+
+    n_live = sum(1 for h in hosts if h.get("alive"))
+    n_exp = sum(1 for h in hosts if _status(h) == "exposed")
+    n_tk = sum(1 for h in hosts if _status(h) == "takeover")
+    n_cve = sum(1 for h in hosts if h.get("cve"))
+    n_ports = sum(len(h.get("ports", [])) for h in hosts)
+    cells = [(t["st_host"], len(hosts)), (t["st_live"], n_live), (t["st_tk"], n_tk),
+             (t["st_exp"], n_exp), (t["st_ports"], n_ports)] + ([(t["st_cve"], n_cve)] if n_cve else [])
+    tbl = Table([[Paragraph(f'<font size=8 color="#6a7b89">{E(l.upper())}</font><br/><font size=15><b>{v}</b></font>', S["n"]) for l, v in cells]],
+                colWidths=[(170 * mm) / len(cells)] * len(cells))
+    tbl.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#dfe6ec")),
+                             ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#dfe6ec")),
+                             ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                             ("LEFTPADDING", (0, 0), (-1, -1), 8)]))
+    story += [tbl, Spacer(1, 8)]
+
+    p = scan.get("posture") or {}
+    if p and focus != "cve":
+        story.append(Paragraph(E(t["posture"]), S["h2"]))
+        def ok(v):
+            return t["present"] if v else t["missing"]
+        for lab, val in (("SPF", ok(p.get("spf_ok"))), ("DMARC", ok(p.get("dmarc_ok"))),
+                         ("DKIM", ", ".join(p.get("dkim") or []) or t["none"]),
+                         ("CAA", ", ".join(p.get("caa") or []) or t["none"]),
+                         ("MX", ", ".join(p.get("mx") or []) or t["none"]),
+                         ("NS", ", ".join(p.get("ns") or []) or "—")):
+            story.append(Paragraph(f'<b>{E(lab)}:</b> {E(val)}', S["n"]))
+        if scan.get("wildcard"):
+            story.append(Paragraph(f'<b>{t["wildcard"]}:</b> {E(", ".join(scan["wildcard"]))}', S["n"]))
+
+    def host_flow(h):
+        st = _status(h)
+        lab = t["b_" + ("tk" if st == "takeover" else "exp" if st == "exposed" else st)]
+        fl = [Paragraph(f'{E(h["host"])} &nbsp;<font size=8 color="#6a7b89">[{E(lab)}]</font>', S["h3"])]
+        m = []
+        if h.get("ips"):
+            m.append(f'{t["ip"]}: {E(", ".join(h["ips"][:6]))}')
+        if h.get("cname"):
+            m.append(f'{t["cname"]}: {E(h["cname"])}')
+        fl.append(Paragraph(" &middot; ".join(m) or "&nbsp;", S["sm"]))
+        cves = h.get("cve") or []
+        verc = [v for v in cves if (v.get("method") or "version") == "version" and _cve_match(v, cvefilter)]
+        fpc = [v for v in cves if v.get("method") == "fingerprint" and _cve_match(v, cvefilter)]
+
+        def finds(items, label):
+            if not items:
+                return
+            fl.append(Paragraph(f'<b>{E(label)}:</b>', S["n"]))
+            for v in items:
+                col = SEVC.get(v.get("severity"), colors.black).hexval()[2:]
+                cveid = f' ({E(v["cve"])})' if v.get("cve") and v["cve"] != "—" else ""
+                evt = _fl(v, lang, "evidence")
+                ev = f' — {E(evt)}' if evt else ""
+                fl.append(Paragraph(f'&bull; <font color="#{col}"><b>{E(v.get("severity",""))}:</b></font> '
+                                    f'{E(_fl(v, lang, "title"))}{cveid}{ev}', S["find"]))
+        finds(verc, t["cve_ver"])
+        finds(fpc, t["cve_fp"])
+        if focus != "cve":
+            if h.get("tech"):
+                fl.append(Paragraph(f'<b>{t["tech"]}:</b> {E(", ".join(h["tech"]))}', S["n"]))
+            finds(h.get("vuln") or [], t["vuln"])
+            if h.get("exposed_flags"):
+                fl.append(Paragraph(f'<b>{t["exposed_svc"]}:</b> {E(", ".join(h["exposed_flags"]))}', S["n"]))
+            if h.get("pq") and h["pq"].get("kex"):
+                pq = h["pq"]; k = pq.get("kex", {}); c = pq.get("cert", {})
+                vmap = {"hybrid": t["pq_hybrid"], "classical": t["pq_classical"], "unknown": t["pq_unknown"]}
+                det = [x for x in [f'{t["pq_kex"]} {k.get("group","")}' if k.get("group") else "",
+                                   f'TLS {k.get("tls","")}' if k.get("tls") else "",
+                                   f'{t["pq_cert"]} {c.get("key_alg","")}' if c.get("key_alg") else "",
+                                   f'{t["pq_sig"]} {c.get("sig_alg","")}' if c.get("sig_alg") else ""] if x]
+                fl.append(Paragraph(f'<b>{t["pq"]}:</b> {E(vmap.get(pq.get("verdict"),"?"))}'
+                                    + (" &middot; " + E(" · ".join(det)) if det else ""), S["n"]))
+            if h.get("ports"):
+                rows = [[P(t["th_port"], "sm"), P(t["th_svc"], "sm"), P(t["th_detail"], "sm"), P(t["th_rtt"], "sm")]]
+                for pp in h["ports"]:
+                    http = pp.get("http") or {}; tls = pp.get("tls") or {}
+                    det = []
+                    if http.get("status"):
+                        det.append("HTTP " + str(http["status"]))
+                    for kk in ("server", "powered_by", "title"):
+                        if http.get(kk):
+                            det.append(str(http[kk]))
+                    if tls.get("cn"):
+                        det.append("CN=" + tls["cn"])
+                    if pp.get("banner"):
+                        det.append(pp["banner"])
+                    rows.append([P(pp["port"]), P(pp.get("name", "?")), P(" · ".join(str(d) for d in det)[:200] or "—"),
+                                 P((str(pp["rtt_ms"]) + " ms") if pp.get("rtt_ms") is not None else "—")])
+                pt = Table(rows, colWidths=[14 * mm, 26 * mm, 110 * mm, 20 * mm])
+                pt.setStyle(TableStyle([("LINEBELOW", (0, 0), (-1, -1), 0.4, colors.HexColor("#e3e9ee")),
+                                        ("TOPPADDING", (0, 0), (-1, -1), 2), ("BOTTOMPADDING", (0, 0), (-1, -1), 2)]))
+                fl += [Spacer(1, 2), pt]
+        fl.append(Spacer(1, 8))
+        return KeepTogether(fl)
+
+    if focus == "cve":
+        shown = sorted([h for h in hosts if any(_cve_match(v, cvefilter) for v in (h.get("cve") or []))], key=lambda h: h["host"])
+        story.append(Paragraph(t["cve"], S["h2"]))
+        if shown:
+            for h in shown:
+                story.append(host_flow(h))
+        else:
+            story.append(Paragraph("—", S["n"]))
+    else:
+        order = {"takeover": 0, "exposed": 1, "live": 2, "dead": 3}
+        attn = sorted([h for h in hosts if _status(h) in ("takeover", "exposed")], key=lambda h: (order[_status(h)], h["host"]))
+        live = sorted([h for h in hosts if _status(h) == "live"], key=lambda h: h["host"])
+        dead = sorted([h for h in hosts if _status(h) == "dead"], key=lambda h: h["host"])
+        if attn:
+            story.append(Paragraph(t["attn"], S["h2"]))
+            story += [host_flow(h) for h in attn]
+        if live:
+            story.append(Paragraph(t["live"], S["h2"]))
+            story += [host_flow(h) for h in live]
+        if dead:
+            story.append(Paragraph(t["dead"], S["h2"]))
+            story.append(Paragraph(E(", ".join(h["host"] for h in dead)), S["sm"]))
+
+    story += [Spacer(1, 10), Paragraph(f'<font size=8 color="#6a7b89">{E(t["footer"])}</font>', S["n"])]
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=14 * mm, bottomMargin=14 * mm,
+                            leftMargin=14 * mm, rightMargin=14 * mm, title=f'{t["doc"]} — {scan.get("domain","")}')
+    doc.build(story)
+    return buf.getvalue()

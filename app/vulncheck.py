@@ -27,6 +27,12 @@ def _trunc(s: str, n: int = _EV) -> str:
     return s[:n]
 
 
+def _xf(id_, sev, title_hu, title_en, ev_hu, ev_en):
+    """Kétnyelvű kitettség-finding (a riport a nyelvhez illő mezőt mutatja)."""
+    return {"id": id_, "severity": sev, "title": title_hu, "title_en": title_en,
+            "evidence": _trunc(ev_hu), "evidence_en": _trunc(ev_en)}
+
+
 async def _get(client, url: str, host: str | None = None, timeout: float = 6.0):
     """Biztonságos GET: (status, text) vagy None. Átirányítást nem követ, max ~64 KB-ot olvas.
 
@@ -76,12 +82,9 @@ async def exposed_checks(client, host: str, ip: str, open_ports: list[int],
         try:
             res = await _get(client, f"{base}/.git/HEAD", timeout=timeout)
             if res and res[0] == 200 and res[1].lstrip().startswith("ref:"):
-                findings.append({
-                    "id": "exposed-git",
-                    "severity": "high",
-                    "title": "Kitett .git könyvtár",
-                    "evidence": _trunc(f"GET /.git/HEAD → {res[1]}"),
-                })
+                findings.append(_xf("exposed-git", "high",
+                    "Kitett .git könyvtár", "Exposed .git directory",
+                    f"GET /.git/HEAD → {res[1]}", f"GET /.git/HEAD → {res[1]}"))
         except Exception:  # noqa: BLE001
             pass
 
@@ -92,12 +95,9 @@ async def exposed_checks(client, host: str, ip: str, open_ports: list[int],
                 body = res[1]
                 for needle in ("APP_KEY=", "DB_PASSWORD", "SECRET"):
                     if needle in body:
-                        findings.append({
-                            "id": "exposed-dotenv",
-                            "severity": "critical",
-                            "title": "Kitett .env fájl",
-                            "evidence": _trunc(f"GET /.env tartalmaz: {needle}"),
-                        })
+                        findings.append(_xf("exposed-dotenv", "critical",
+                            "Kitett .env fájl", "Exposed .env file",
+                            f"GET /.env tartalmaz: {needle}", f"GET /.env contains: {needle}"))
                         break
         except Exception:  # noqa: BLE001
             pass
@@ -107,12 +107,9 @@ async def exposed_checks(client, host: str, ip: str, open_ports: list[int],
             for path in ("/", "/uploads/"):
                 res = await _get(client, f"{base}{path}", timeout=timeout)
                 if res and res[0] == 200 and "Index of /" in res[1]:
-                    findings.append({
-                        "id": "dir-listing",
-                        "severity": "medium",
-                        "title": "Nyitott könyvtárlistázás",
-                        "evidence": _trunc(f"GET {path} → 'Index of /'"),
-                    })
+                    findings.append(_xf("dir-listing", "medium",
+                        "Nyitott könyvtárlistázás", "Open directory listing",
+                        f"GET {path} → 'Index of /'", f"GET {path} → 'Index of /'"))
                     break
         except Exception:  # noqa: BLE001
             pass
@@ -121,12 +118,10 @@ async def exposed_checks(client, host: str, ip: str, open_ports: list[int],
         try:
             res = await _get(client, f"{base}/server-status", timeout=timeout)
             if res and res[0] == 200 and "Apache Server Status" in res[1]:
-                findings.append({
-                    "id": "apache-server-status",
-                    "severity": "low",
-                    "title": "Kitett Apache server-status",
-                    "evidence": _trunc("GET /server-status → 'Apache Server Status'"),
-                })
+                findings.append(_xf("apache-server-status", "low",
+                    "Kitett Apache server-status", "Exposed Apache server-status",
+                    "GET /server-status → 'Apache Server Status'",
+                    "GET /server-status → 'Apache Server Status'"))
         except Exception:  # noqa: BLE001
             pass
 
@@ -138,12 +133,9 @@ async def exposed_checks(client, host: str, ip: str, open_ports: list[int],
                     body = res[1]
                     low = body.lower()
                     if ('"status"' in low) or ('"_links"' in low) or ("actuator" in low):
-                        findings.append({
-                            "id": "spring-actuator",
-                            "severity": "medium",
-                            "title": "Kitett Spring actuator",
-                            "evidence": _trunc(f"GET {path} → {body}"),
-                        })
+                        findings.append(_xf("spring-actuator", "medium",
+                            "Kitett Spring actuator", "Exposed Spring actuator",
+                            f"GET {path} → {body}", f"GET {path} → {body}"))
                         break
         except Exception:  # noqa: BLE001
             pass
@@ -152,12 +144,9 @@ async def exposed_checks(client, host: str, ip: str, open_ports: list[int],
         try:
             res = await _get(client, f"{base}/phpinfo.php", timeout=timeout)
             if res and res[0] == 200 and "PHP Version" in res[1]:
-                findings.append({
-                    "id": "phpinfo",
-                    "severity": "low",
-                    "title": "Kitett phpinfo (információszivárgás)",
-                    "evidence": _trunc("GET /phpinfo.php → 'PHP Version'"),
-                })
+                findings.append(_xf("phpinfo", "low",
+                    "Kitett phpinfo (információszivárgás)", "Exposed phpinfo (information disclosure)",
+                    "GET /phpinfo.php → 'PHP Version'", "GET /phpinfo.php → 'PHP Version'"))
         except Exception:  # noqa: BLE001
             pass
 
@@ -167,19 +156,16 @@ async def exposed_checks(client, host: str, ip: str, open_ports: list[int],
         try:
             res = await _get(client, f"http://{ip}:9200/", timeout=timeout)
             if res and res[0] == 200 and "cluster_name" in res[1]:
-                evidence = f"GET :9200/ cluster_name jelen van"
+                ev_hu = "GET :9200/ cluster_name jelen van"
+                ev_en = "GET :9200/ cluster_name present"
                 try:
                     idx = await _get(client, f"http://{ip}:9200/_cat/indices", timeout=timeout)
                     if idx and idx[0] == 200 and idx[1].strip():
-                        evidence = f"_cat/indices: {idx[1]}"
+                        ev_hu = ev_en = f"_cat/indices: {idx[1]}"
                 except Exception:  # noqa: BLE001
                     pass
-                findings.append({
-                    "id": "open-elasticsearch",
-                    "severity": "high",
-                    "title": "Nyílt Elasticsearch (auth nélkül)",
-                    "evidence": _trunc(evidence),
-                })
+                findings.append(_xf("open-elasticsearch", "high",
+                    "Nyílt Elasticsearch (auth nélkül)", "Open Elasticsearch (no auth)", ev_hu, ev_en))
         except Exception:  # noqa: BLE001
             pass
 
@@ -189,12 +175,9 @@ async def exposed_checks(client, host: str, ip: str, open_ports: list[int],
             for path in ("/-/healthy", "/"):
                 res = await _get(client, f"http://{ip}:9090{path}", timeout=timeout)
                 if res and res[0] == 200 and "Prometheus" in res[1]:
-                    findings.append({
-                        "id": "open-prometheus",
-                        "severity": "low",
-                        "title": "Kitett Prometheus",
-                        "evidence": _trunc(f"GET :9090{path} → 'Prometheus'"),
-                    })
+                    findings.append(_xf("open-prometheus", "low",
+                        "Kitett Prometheus", "Exposed Prometheus",
+                        f"GET :9090{path} → 'Prometheus'", f"GET :9090{path} → 'Prometheus'"))
                     break
         except Exception:  # noqa: BLE001
             pass
@@ -204,12 +187,9 @@ async def exposed_checks(client, host: str, ip: str, open_ports: list[int],
         try:
             res = await _get(client, f"http://{ip}:3000/login", timeout=timeout)
             if res and res[0] == 200 and "Grafana" in res[1]:
-                findings.append({
-                    "id": "exposed-grafana",
-                    "severity": "info",
-                    "title": "Elérhető Grafana bejelentkezés",
-                    "evidence": _trunc("GET :3000/login → 'Grafana'"),
-                })
+                findings.append(_xf("exposed-grafana", "info",
+                    "Elérhető Grafana bejelentkezés", "Reachable Grafana login",
+                    "GET :3000/login → 'Grafana'", "GET :3000/login → 'Grafana'"))
         except Exception:  # noqa: BLE001
             pass
 
@@ -218,12 +198,9 @@ async def exposed_checks(client, host: str, ip: str, open_ports: list[int],
         try:
             res = await _get(client, f"http://{ip}:5601/", timeout=timeout)
             if res and res[0] == 200 and "kibana" in res[1].lower():
-                findings.append({
-                    "id": "exposed-kibana",
-                    "severity": "low",
-                    "title": "Elérhető Kibana",
-                    "evidence": _trunc("GET :5601/ → 'kibana'"),
-                })
+                findings.append(_xf("exposed-kibana", "low",
+                    "Elérhető Kibana", "Reachable Kibana",
+                    "GET :5601/ → 'kibana'", "GET :5601/ → 'kibana'"))
         except Exception:  # noqa: BLE001
             pass
 

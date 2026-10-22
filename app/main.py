@@ -316,6 +316,19 @@ async def api_export_md(scan_id: str):
                     headers={"Content-Disposition": f'attachment; filename="recon_{s["domain"]}_{scan_id}.md"'})
 
 
+@app.get("/api/export/{scan_id}.pdf")
+async def api_export_pdf(scan_id: str, request: Request):
+    s, hosts = _scan_for_export(scan_id)
+    q = request.query_params
+    lang = q.get("lang", "hu")
+    focus = q.get("focus", "full")
+    cve = q.get("cve", "")[:40]
+    data = report.build_pdf(s, hosts, lang=lang, focus=focus, cve=cve)
+    suffix = (f"_{focus}" if focus != "full" else "") + (f"_{cve}" if cve else "")
+    return Response(data, media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="recon_{s["domain"]}_{scan_id}{suffix}.pdf"'})
+
+
 @app.get("/api/export/{scan_id}.xlsx")
 async def api_export_xlsx(scan_id: str):
     s, hosts = _scan_for_export(scan_id)

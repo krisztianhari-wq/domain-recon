@@ -8,7 +8,7 @@ body{margin:0;background:var(--bg);color:var(--ink);
 .bar{display:flex;gap:12px;align-items:center;margin-bottom:16px}
 .bar a,.bar button{font:600 13px system-ui;padding:8px 14px;border:1px solid var(--line);border-radius:8px;
   background:var(--card);color:var(--ink2);text-decoration:none;cursor:pointer}
-.bar button{background:var(--accent);color:#fff;border-color:var(--accent)}
+.bar button,.bar a.dl{background:var(--accent);color:#fff;border-color:var(--accent)}
 .bar a:hover,.bar button:hover{filter:brightness(.97)}
 header{border-bottom:3px solid var(--accent);padding-bottom:12px;margin-bottom:18px}
 .brand{font:700 13px system-ui;letter-spacing:.12em;color:var(--accent)}
