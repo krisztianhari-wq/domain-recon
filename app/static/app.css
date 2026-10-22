@@ -26,6 +26,15 @@ h2{margin:0;font-size:13px;font-weight:600;letter-spacing:.12em;text-transform:u
 .note{background:var(--accent-soft);border-left:3px solid var(--accent);border-radius:8px;padding:10px 14px;font-size:13.5px;color:var(--ink-2)}
 .note.warn{background:var(--warn-bg);border-color:var(--warn)}
 .note b{color:var(--ink)}
+.cveinfo{border:1px solid var(--line);border-radius:8px;background:var(--panel-2);padding:0 14px;font-size:13.5px}
+.cveinfo>summary{cursor:pointer;padding:10px 0;color:var(--ink-2);font:600 12.5px var(--mono);letter-spacing:.04em;list-style:none}
+.cveinfo>summary::-webkit-details-marker{display:none}
+.cveinfo>summary::before{content:"▸ ";color:var(--accent)}
+.cveinfo[open]>summary::before{content:"▾ "}
+.cveinfo[open]{padding-bottom:12px}
+.cveinfo .sub{margin:8px 0 2px;color:var(--ink-2)}
+.cveinfo-list{margin:2px 0 4px;padding-left:18px;color:var(--ink-3)}
+.cveinfo-list li{margin:3px 0;font:12.5px var(--mono)}
 .row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px}
 .stat{display:flex;flex-direction:column;gap:2px;min-width:0;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:12px 16px}

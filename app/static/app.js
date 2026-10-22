@@ -4,8 +4,37 @@ const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
 const L = () => t("locale");
-// Találat nyelvfüggő mezője (title/evidence): EN-nél a *_en, ha van; különben a HU/alap.
-const fl = (v, key) => (LANG === "en" ? (v[key + "_en"] || v[key]) : v[key]) || "";
+// Régi (egynyelvű, HU) findingök render-idejű EN-fordítása – ne kelljen újraszkennelni.
+const _HU2EN = [
+  ["PHP-CGI argumentuminjekció (RCE)", "PHP-CGI argument injection (RCE)"],
+  ["Confluence OGNL-injekció (RCE)", "Confluence OGNL injection (RCE)"],
+  ["Confluence jogosultság-megkerülés", "Confluence broken access control"],
+  ["Atlassian Confluence észlelve", "Atlassian Confluence detected"],
+  ["Kitett phpinfo (információszivárgás)", "Exposed phpinfo (information disclosure)"],
+  ["Nyílt Elasticsearch (auth nélkül)", "Open Elasticsearch (no auth)"],
+  ["Elérhető Grafana bejelentkezés", "Reachable Grafana login"],
+  ["Kitett Apache server-status", "Exposed Apache server-status"],
+  ["Nyitott könyvtárlistázás", "Open directory listing"],
+  ["Kitett Spring actuator", "Exposed Spring actuator"],
+  ["Kitett .git könyvtár", "Exposed .git directory"],
+  ["Kitett .env fájl", "Exposed .env file"],
+  ["Kitett Prometheus", "Exposed Prometheus"],
+  ["Elérhető Kibana", "Reachable Kibana"],
+  ["verzió nem olvasható ki – ellenőrizd a", "version not readable – check against"],
+  ["verzió alapján, alap konfig érintett", "by version, default config affected"],
+  ["alap konfig érintett", "default config affected"],
+  ["csak Windows+CGI érintett – ellenőrzendő", "Windows+CGI only – verify"],
+  ["csak Windows+CGI – ellenőrzendő", "Windows+CGI only – verify"],
+  ["Windows+CGI megerősítve", "Windows+CGI confirmed"],
+  ["mod_proxy esetén", "mod_proxy only"],
+  ["cluster_name jelen van", "cluster_name present"],
+  ["javítva:", "fixed:"],
+  ["tartalmaz:", "contains:"],
+  [" ellen", ""],
+];
+const toEn = s => { s = s || ""; for (const [hu, en] of _HU2EN) if (s.includes(hu)) s = s.split(hu).join(en); return s; };
+// Találat nyelvfüggő mezője (title/evidence): EN-nél a *_en, ha van; különben a HU render-időben EN-re fordítva.
+const fl = (v, key) => LANG === "en" ? (v[key + "_en"] || toEn(v[key])) : (v[key] || "");
 
 let current = null, poll = null, hosts = [], scan = {}, liveFilter = "all", bruteSuggested = false;
 

@@ -100,6 +100,21 @@
       <div><h2 data-i18n="cve_title">Ismert sebezhetőségek (CVE)</h2><p class="sub" data-i18n="cve_help">Az élő hostok fejlécéből termék+verzió → ismert kritikus CVE (verzió alapján, nem kihasználás).</p></div>
       <button class="go" id="cvego" type="button" data-i18n="cve_go">CVE-vizsgálat indítása</button>
     </div>
+    <details class="cveinfo">
+      <summary data-i18n="cve_info_sum">Mit néz a vizsgálat?</summary>
+      <p class="sub" data-i18n="cve_info_a">A) Verzió alapján (Server / X-Powered-By fejléc):</p>
+      <ul class="cveinfo-list">
+        <li data-i18n="cve_info_php2shell">PHP php2shell RCE — CVE-2026-109618 / CVE-2026-109619</li>
+        <li data-i18n="cve_info_phpcgi">PHP-CGI argumentuminjekció (RCE) — CVE-2024-4577 (Windows+CGI)</li>
+        <li data-i18n="cve_info_apache_pt">Apache path traversal → RCE — CVE-2021-41773 / CVE-2021-42013 (2.4.49/2.4.50)</li>
+        <li data-i18n="cve_info_apache_proxy">Apache mod_proxy SSRF — CVE-2021-40438 (≤2.4.48)</li>
+      </ul>
+      <p class="sub" data-i18n="cve_info_b">B) Ujjlenyomat alapján (kíméletes GET):</p>
+      <ul class="cveinfo-list">
+        <li data-i18n="cve_info_conf_ognl">Confluence OGNL-injekció (RCE) — CVE-2022-26134</li>
+        <li data-i18n="cve_info_conf_bypass">Confluence jogosultság-megkerülés — CVE-2023-22515</li>
+      </ul>
+    </details>
     <div class="prog hide" id="cveprog">
       <div class="progmeta"><span><span class="stage-chip" id="cstage">–</span> · <span id="cprogtxt">0 / 0</span></span></div>
       <div class="progbar" id="cprogbar"><i></i></div>

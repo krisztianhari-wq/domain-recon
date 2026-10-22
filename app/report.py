@@ -455,10 +455,49 @@ def _cve_match(v, flt):
     return flt.lower() in hay
 
 
+# Régi (egynyelvű, HU) findingök EN-re fordítása render-időben – ne kelljen újraszkennelni.
+# A leghosszabb/legspecifikusabb kifejezés előre (a sorrend számít).
+_HU2EN = [
+    ("PHP-CGI argumentuminjekció (RCE)", "PHP-CGI argument injection (RCE)"),
+    ("Confluence OGNL-injekció (RCE)", "Confluence OGNL injection (RCE)"),
+    ("Confluence jogosultság-megkerülés", "Confluence broken access control"),
+    ("Atlassian Confluence észlelve", "Atlassian Confluence detected"),
+    ("Kitett phpinfo (információszivárgás)", "Exposed phpinfo (information disclosure)"),
+    ("Nyílt Elasticsearch (auth nélkül)", "Open Elasticsearch (no auth)"),
+    ("Elérhető Grafana bejelentkezés", "Reachable Grafana login"),
+    ("Kitett Apache server-status", "Exposed Apache server-status"),
+    ("Nyitott könyvtárlistázás", "Open directory listing"),
+    ("Kitett Spring actuator", "Exposed Spring actuator"),
+    ("Kitett .git könyvtár", "Exposed .git directory"),
+    ("Kitett .env fájl", "Exposed .env file"),
+    ("Kitett Prometheus", "Exposed Prometheus"),
+    ("Elérhető Kibana", "Reachable Kibana"),
+    ("verzió nem olvasható ki – ellenőrizd a", "version not readable – check against"),
+    ("verzió alapján, alap konfig érintett", "by version, default config affected"),
+    ("alap konfig érintett", "default config affected"),
+    ("csak Windows+CGI érintett – ellenőrzendő", "Windows+CGI only – verify"),
+    ("csak Windows+CGI – ellenőrzendő", "Windows+CGI only – verify"),
+    ("Windows+CGI megerősítve", "Windows+CGI confirmed"),
+    ("mod_proxy esetén", "mod_proxy only"),
+    ("cluster_name jelen van", "cluster_name present"),
+    ("javítva:", "fixed:"),
+    ("tartalmaz:", "contains:"),
+    (" ellen", ""),
+]
+
+
+def _to_en(s: str) -> str:
+    for hu, en in _HU2EN:
+        if hu in s:
+            s = s.replace(hu, en)
+    return s
+
+
 def _fl(v: dict, lang: str, key: str) -> str:
-    """A találat nyelvfüggő mezője (title/evidence): EN-nél a *_en, ha van; különben a HU/alap."""
+    """A találat nyelvfüggő mezője (title/evidence): EN-nél a *_en, ha van; különben a HU/alap
+    render-időben EN-re fordítva (régi, egynyelvű findingökhöz – nem kell újraszkennelni)."""
     if lang == "en":
-        return v.get(key + "_en") or v.get(key) or ""
+        return v.get(key + "_en") or _to_en(v.get(key) or "")
     return v.get(key) or ""
 
 
