@@ -95,14 +95,21 @@ app.mount("/static", StaticFiles(directory=STATIC), name="static")
 _NOCACHE = {"Cache-Control": "no-cache"}
 
 
+def _page(name: str) -> Response:
+    """HTML kiszolgálása a verzió behelyettesítésével (asset-URL cache-busting: ?v=<verzió>)."""
+    with open(os.path.join(STATIC, name), encoding="utf-8") as fh:
+        html = fh.read().replace("__VER__", __version__)
+    return Response(html, media_type="text/html; charset=utf-8", headers=_NOCACHE)
+
+
 @app.get("/")
 async def index():
-    return FileResponse(os.path.join(STATIC, "index.html"), headers=_NOCACHE)
+    return _page("index.html")
 
 
 @app.get("/graph")
 async def graph():
-    return FileResponse(os.path.join(STATIC, "graph.html"), headers=_NOCACHE)
+    return _page("graph.html")
 
 
 @app.get("/healthz")
