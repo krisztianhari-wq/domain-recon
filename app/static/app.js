@@ -122,7 +122,8 @@ function renderActive(s) {
   const notRun = !["queued", "running", "done"].includes(s.active_status);
   const liveCount = hosts.filter(h => h.alive).length;
   const sparse = hosts.length <= 1 || liveCount === 0;
-  const showHint = passiveDone && s.status === "done" && notRun && sparse;
+  const isIp = s.opts && s.opts.target_kind === "ip";   // IP-célpontnál a DNS-brute értelmetlen
+  const showHint = passiveDone && s.status === "done" && notRun && sparse && !isIp;
   if (hint) {
     hint.classList.toggle("hide", !showHint);
     if (showHint) {

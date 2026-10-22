@@ -9,11 +9,13 @@ import asyncio
 import csv
 import hmac
 import io
+import ipaddress
 import json
 import os
 import re
 import secrets
 import time
+from itertools import islice
 
 from fastapi import Body, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
@@ -140,6 +142,49 @@ def _norm_domain(raw: str) -> str:
     return d
 
 
+_MAX_TARGET_IPS = int(os.getenv("RECON_MAX_HOSTS", "750"))
+
+
+def _expand_ips(s: str):
+    """(ips, total). CIDR / tartomány (a-b vagy a.b.c.d-N) / egyetlen IP → IP-lista (capelve) + teljes darabszám."""
+    if "/" in s:                                   # CIDR
+        net = ipaddress.ip_network(s, strict=False)
+        total = net.num_addresses - (2 if net.version == 4 and net.prefixlen < 31 else 0)
+        total = max(total, 1)
+        ips = [str(x) for x in islice(net.hosts(), _MAX_TARGET_IPS)] or [str(net.network_address)]
+        return ips, total
+    if "-" in s:                                   # tartomány
+        a, _, b = s.partition("-")
+        start = ipaddress.ip_address(a.strip())
+        if "." in b or ":" in b:
+            end = ipaddress.ip_address(b.strip())
+        elif start.version == 4 and b.strip().isdigit():
+            end = ipaddress.ip_address((int(start) & ~0xFF) | (int(b) & 0xFF))
+        else:
+            raise ValueError("bad range")
+        lo, hi = sorted((int(start), int(end)))
+        total = hi - lo + 1
+        ips = [str(ipaddress.ip_address(i)) for i in range(lo, min(hi, lo + _MAX_TARGET_IPS - 1) + 1)]
+        return ips, total
+    ipaddress.ip_address(s)                        # egyetlen IP (ValueError ha nem az)
+    return [s], 1
+
+
+def _norm_target(raw: str):
+    """(kind, label, ips, total). kind: 'domain' → ips None; 'ip' → cím/CIDR/tartomány."""
+    s = (raw or "").strip()
+    s = re.sub(r"^https?://", "", s).strip().rstrip(".")
+    looks_ip = bool(re.fullmatch(r"[0-9a-fA-F:.\-/]+", s)) and (":" in s or "/" in s or bool(re.search(r"\d+\.\d+", s)))
+    if looks_ip:
+        try:
+            ips, total = _expand_ips(s)
+            if ips:
+                return "ip", s, ips[:_MAX_TARGET_IPS], total
+        except ValueError:
+            pass
+    return "domain", _norm_domain(raw), None, 0
+
+
 def _active_opts(payload: dict) -> dict:
     ports = str(payload.get("ports", "service"))
     custom = str(payload.get("custom_ports", ""))[:2000]
@@ -159,14 +204,18 @@ async def api_scan(payload: dict = Body(...)):
                   if s["status"] in ("queued", "running") or s.get("active_status") in ("queued", "running"))
     if running >= MAX_SCANS:
         raise HTTPException(429, f"Már {running} vizsgálat fut. Várd meg, amíg befejeződik.")
-    domain = _norm_domain(payload.get("domain", ""))
+    kind, label, ips, total = _norm_target(payload.get("domain", ""))
     # a passzív fázis az alap; az aktív-opciókat eltároljuk a későbbi aktív indításhoz
     opts = _active_opts(payload)
+    opts["target_kind"] = kind
+    if kind == "ip":
+        opts["target_ips"] = ips
+        opts["target_total"] = total
     scan_id = secrets.token_hex(8)
-    db.create_scan(scan_id, domain, opts)
+    db.create_scan(scan_id, label, opts)
     db.prune(KEEP)
-    engine.start_passive(db, scan_id, domain, opts)
-    return {"id": scan_id, "domain": domain, "opts": opts}
+    engine.start_passive(db, scan_id, label, opts)
+    return {"id": scan_id, "domain": label, "opts": opts}
 
 
 @app.post("/api/scan/{scan_id}/active")
