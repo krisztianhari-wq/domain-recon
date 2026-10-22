@@ -228,3 +228,38 @@ async def exposed_checks(client, host: str, ip: str, open_ports: list[int],
             pass
 
     return findings
+
+
+# ---------------- Verzió-alapú ismert-CVE jelzés (nem kihasználás) ----------------
+import re as _re  # noqa: E402
+
+# PHP „php2shell" – kritikus, hitelesítés nélküli RCE a PHP-motorban (alap konfig érintett).
+# Javított kiadások ághoz kötve; az ág alatt minden korábbi patch sebezhető.
+_PHP2SHELL_FIXED = {(8, 5): (8, 5, 12), (8, 4): (8, 4, 27), (8, 3): (8, 3, 36), (8, 2): (8, 2, 35)}
+_PHP2SHELL = {"id": "php2shell", "cve": "CVE-2026-109618 / CVE-2026-109619",
+              "severity": "critical", "fixed": "8.5.12 / 8.4.27 / 8.3.36 / 8.2.35"}
+
+
+def _parse_ver(s):
+    m = _re.search(r"PHP/(\d+)\.(\d+)\.(\d+)", s or "")
+    return tuple(int(x) for x in m.groups()) if m else None
+
+
+def _php2shell_vulnerable(ver):
+    """ver=(maj,min,patch). True ha a php2shell (CVE-2026-109618/109619) érinti."""
+    branch = ver[:2]
+    if branch in _PHP2SHELL_FIXED:
+        return ver < _PHP2SHELL_FIXED[branch]       # ágon belül a javított patch alatt
+    return ver < (8, 2)                              # 8.1 és régebbi (EOL) – backport nélkül sebezhető
+
+
+def php_cve_findings(powered_by: str = "", server: str = "") -> list[dict]:
+    """Detektált PHP-verzió (X-Powered-By / Server fejléc) → ismert kritikus CVE jelzés.
+    Verzió-alapú, NEM kihasználás: a verzióegyezés nem bizonyít kihasználhatóságot."""
+    ver = _parse_ver(powered_by) or _parse_ver(server)
+    if not ver or not _php2shell_vulnerable(ver):
+        return []
+    vs = ".".join(map(str, ver))
+    return [{"id": _PHP2SHELL["id"], "severity": _PHP2SHELL["severity"],
+             "title": f"PHP php2shell RCE ({_PHP2SHELL['cve']})",
+             "evidence": f"PHP {vs} — javítva: {_PHP2SHELL['fixed']} (verzió alapján, alap konfig érintett)"}]

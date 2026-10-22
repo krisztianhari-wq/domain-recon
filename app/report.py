@@ -12,7 +12,7 @@ import time
 def _status(h: dict) -> str:
     if h.get("takeover") and h["takeover"].get("service"):
         return "takeover"
-    if (h.get("exposed_flags") or h.get("vuln")):
+    if (h.get("exposed_flags") or h.get("vuln") or h.get("cve")):
         return "exposed"
     return "live" if h.get("alive") else "dead"
 
@@ -62,6 +62,8 @@ def _host_clean(h: dict) -> dict:
         out["exposure"] = h["exposed_flags"]
     if h.get("vuln"):
         out["vulnerabilities"] = h["vuln"]
+    if h.get("cve"):
+        out["known_cves"] = h["cve"]
     if h.get("takeover") and h["takeover"].get("service"):
         out["takeover"] = h["takeover"]
     if h.get("pq") and h["pq"].get("kex"):
@@ -160,6 +162,13 @@ def _host_md(h: dict) -> str:
         lines.append("")
         lines.append("**Sebezhetőség / kitettség:**")
         for v in h["vuln"]:
+            ev = f" — {v['evidence']}" if v.get("evidence") else ""
+            lines.append(f"- [{v.get('severity','?')}] {v.get('title','')}{ev}")
+    # ismert CVE (verzió alapján)
+    if h.get("cve"):
+        lines.append("")
+        lines.append("**Ismert sebezhetőség (CVE, verzió alapján):**")
+        for v in h["cve"]:
             ev = f" — {v['evidence']}" if v.get("evidence") else ""
             lines.append(f"- [{v.get('severity','?')}] {v.get('title','')}{ev}")
     # portok

@@ -395,6 +395,55 @@ class Engine:
         for h, rec in new_hosts.items():
             self.db.upsert_host(self.id, h, rec)
 
+    # ============================ CVE (külön indítható) ============================
+    async def run_cve(self):
+        """Önálló fázis: az élő hostokon könnyű HTTP-fejléc-lekérés → termék+verzió → ismert kritikus CVE.
+        Verzió-alapú, NEM kihasználás (GET-only, fejléc). Nem igényli az aktív portscant."""
+        self.db.set_status(self.id, "done", cve_status="running")   # a passzív/aktív állapot marad
+        self.db.set_cve_progress(self.id, "cve", 0, 0)
+        _ENGINES[self.id] = self
+        try:
+            hosts = {h["host"]: h for h in self.db.hosts(self.id)}
+            targets = [(h, d) for h, d in hosts.items() if d.get("alive")]
+            total = len(targets)
+            self.db.set_cve_progress(self.id, "cve", 0, total)
+            sem = asyncio.Semaphore(self.hc)
+            done = 0
+            async with httpx.AsyncClient(headers={"User-Agent": UA}, follow_redirects=False, verify=False) as client:
+
+                async def one(host: str, d: dict):
+                    nonlocal done
+                    async with sem, self._gsem:
+                        self._check()
+                        findings = await self._cve_host(client, host)
+                    d["cve"] = findings
+                    self.db.upsert_host(self.id, host, d)
+                    done += 1
+                    self.db.set_cve_progress(self.id, "cve", done, total)
+
+                await asyncio.gather(*(one(h, d) for h, d in targets))
+            self.db.set_cve_progress(self.id, "done", 1, 1)
+            self.db.set_status(self.id, "done", cve_status="done")
+        except Cancelled:
+            self.db.set_status(self.id, "done", cve_status="canceled")
+        except Exception as e:  # noqa: BLE001
+            self.db.set_status(self.id, "done", cve_status="error", error=f"{e.__class__.__name__}: {e}"[:300])
+        finally:
+            _ENGINES.pop(self.id, None)
+
+    async def _cve_host(self, client, host: str) -> list[dict]:
+        powered, server = "", ""
+        for scheme in ("https", "http"):
+            try:
+                r = await client.get(f"{scheme}://{host}/", timeout=self.ftimeout)
+                server = r.headers.get("server", "") or server
+                powered = r.headers.get("x-powered-by", "") or powered
+                if server or powered:
+                    break
+            except Exception:  # noqa: BLE001
+                continue
+        return vulncheck.php_cve_findings(powered, server)
+
 
 # ---- indítók ----
 def start_passive(db, scan_id: str, domain: str, opts: dict) -> Engine:
@@ -408,6 +457,13 @@ def start_active(db, scan_id: str, opts: dict) -> Engine:
     merged = {**(s.get("opts") or {}), **opts}
     eng = Engine(db, scan_id, s["domain"], merged)
     asyncio.create_task(eng.run_active())
+    return eng
+
+
+def start_cve(db, scan_id: str) -> Engine:
+    s = db.get_scan(scan_id)
+    eng = Engine(db, scan_id, s["domain"], s.get("opts") or {})
+    asyncio.create_task(eng.run_cve())
     return eng
 
 

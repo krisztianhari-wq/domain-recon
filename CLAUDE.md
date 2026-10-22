@@ -13,9 +13,9 @@ Domain-feltérképező: aldomének (CT + passzív források) → DNS → (aktív
 
 ## Felépítés
 - `app/engine.py` Engine: enumerate → resolve → scan, intenzitás-profilok, megszakítás. `sources.py` certspotter/crt.sh/anubis/wayback/hackertarget; `enrich.py` PTR + ASN/ország/org (Team Cymru DNS); `ports.py` (service / common ≈1075 / full 65535 / custom); `fingerprint.py` HTTP/TLS/banner + tech; `vulncheck.py` GET-only kitettség (.git/.env/dir-listing/ES/Kibana/actuator…); `pqscan.py` poszt-kvantum TLS; `netchecks.py` DNS/TCP (a saját uptime-monitorból másolva); `db.py` SQLite WAL (`_migrate()` ALTER-rel pótolja a hiányzó oszlopokat); `report.py` MD/JSON/CSV, `xlsx.py`; `main.py` API; `desktop.py` + `launcher.py` asztali indító.
-- Kétfázisú: PASSZÍV az alap (wildcard-felismerés, DNS-posture MX/NS/CAA/SPF/DMARC/DKIM, takeover-heurisztika); AKTÍV külön `POST /api/scan/{id}/active`. Gráf: `/graph` (SVG domain↔host↔IP↔ASN).
+- Háromfázisú, mindegyik külön indítható: PASSZÍV az alap (wildcard-felismerés, DNS-posture MX/NS/CAA/SPF/DMARC/DKIM, takeover-heurisztika); AKTÍV `POST /api/scan/{id}/active` (portscan, ujjlenyomat, PQ-TLS, kitettség); **CVE** `POST /api/scan/{id}/cve` — önálló, könnyű HTTP-fejléc-lekérés az élő hostokon → termék+verzió → ismert kritikus CVE (`vulncheck.php_cve_findings`, jelenleg php2shell CVE-2026-109618/109619, verzió alapján, nem kihasználás). Gráf: `/graph` (SVG domain↔host↔IP↔ASN).
 - `static/`: sadrobot UI, HU/EN (`i18n.js`, hover-magyarázatok EXPLAIN), `theme.js`; index/graph HTML `no-cache`.
-- Verzió: `app/__init__.py __version__` (most 0.3.1) + `/api/version` + lábléc; `app/BUILD` a deploy-szkriptből (gitignore).
+- Verzió: `app/__init__.py __version__` (most 0.4.0) + `/api/version` + lábléc; `app/BUILD` a deploy-szkriptből (gitignore).
 
 ## Kiadás
 - /release skill: verzióemelés, tag `vX.Y.Z` → `.github/workflows/build.yml` (mac arm64 / mac Intel / Windows x64 PyInstaller zip, GitHub Release, bőbeszédű angol release notes). Alapból patch-bump.

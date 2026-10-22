@@ -174,6 +174,19 @@ async def api_scan_active(scan_id: str, payload: dict = Body(default={})):
     return {"id": scan_id, "active": "running", "opts": opts}
 
 
+@app.post("/api/scan/{scan_id}/cve")
+async def api_scan_cve(scan_id: str):
+    s = db.get_scan(scan_id)
+    if not s:
+        raise HTTPException(404, "Nincs ilyen vizsgálat.")
+    if s["status"] in ("queued", "running"):
+        raise HTTPException(409, "A passzív fázis még fut.")
+    if s.get("cve_status") in ("queued", "running"):
+        raise HTTPException(409, "A CVE-vizsgálat már fut.")
+    engine.start_cve(db, scan_id)
+    return {"id": scan_id, "cve": "running"}
+
+
 @app.get("/api/scans")
 async def api_scans():
     return {"scans": db.recent_scans(40)}
@@ -261,7 +274,7 @@ async def api_export_csv(scan_id: str):
             w.writerow([])                      # üres sor választja el a hostokat
         first = False
         info0 = (h.get("ips_info") or [{}])[0]
-        findings = "; ".join([f"{v.get('severity')}:{v.get('title')}" for v in (h.get("vuln") or [])]
+        findings = "; ".join([f"{v.get('severity')}:{v.get('title')}" for v in (h.get("vuln") or []) + (h.get("cve") or [])]
                              + (h.get("exposed_flags") or [])
                              + ([f"takeover:{h['takeover']['service']}"] if h.get("takeover", {}).get("service") else []))
         hostcells = [h["host"], report._status(h), " ".join(h.get("ips", [])), info0.get("ptr") or "",

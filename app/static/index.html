@@ -95,6 +95,17 @@
     </div>
   </section>
 
+  <section class="card hide" id="cvecard">
+    <div class="row">
+      <div><h2 data-i18n="cve_title">Ismert sebezhetőségek (CVE)</h2><p class="sub" data-i18n="cve_help">Az élő hostok fejlécéből termék+verzió → ismert kritikus CVE (verzió alapján, nem kihasználás).</p></div>
+      <button class="go" id="cvego" type="button" data-i18n="cve_go">CVE-vizsgálat indítása</button>
+    </div>
+    <div class="prog hide" id="cveprog">
+      <div class="progmeta"><span><span class="stage-chip" id="cstage">–</span> · <span id="cprogtxt">0 / 0</span></span></div>
+      <div class="progbar" id="cprogbar"><i></i></div>
+    </div>
+  </section>
+
   <section class="hide" id="results">
     <div class="toolbar">
       <input type="text" id="filter" class="filter" data-i18n-ph="filter_ph" placeholder="Szűrés…">

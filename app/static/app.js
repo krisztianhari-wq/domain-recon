@@ -51,6 +51,17 @@ async function startActive() {
   } catch (e) { alert(t("err_start")); $("#activego").disabled = false; }
 }
 
+async function startCve() {
+  if (!current) return;
+  $("#cvego").disabled = true;
+  try {
+    const r = await fetch(`/api/scan/${current}/cve`, {method: "POST"});
+    if (!r.ok) { const e = await r.json().catch(() => ({})); alert(e.detail || t("err_start")); $("#cvego").disabled = false; return; }
+    $("#cveprog").classList.remove("hide");
+    startPoll();
+  } catch (e) { alert(t("err_start")); $("#cvego").disabled = false; }
+}
+
 function startPoll() { stopPoll(); tick(); poll = setInterval(tick, 1500); }
 function stopPoll() { if (poll) { clearInterval(poll); poll = null; } }
 
@@ -60,7 +71,7 @@ async function tick() {
   try { s = await (await fetch(`/api/scan/${current}`, {cache: "no-store"})).json(); }
   catch (e) { return; }
   scan = s; hosts = s.hosts || [];
-  renderProgress(s); renderActive(s); renderStats(); renderPosture(s); renderHosts();
+  renderProgress(s); renderActive(s); renderCve(s); renderStats(); renderPosture(s); renderHosts();
   $("#md").href = `/api/export/${current}.md`;
   $("#xlsx").href = `/api/export/${current}.xlsx`;
   $("#csv").href = `/api/export/${current}.csv`;
@@ -68,7 +79,24 @@ async function tick() {
   $("#graphlink").href = `/graph#${current}`;
   const passiveDone = ["done", "error", "canceled"].includes(s.status);
   const activeIdle = !["queued", "running"].includes(s.active_status);
-  if (passiveDone && activeIdle) { stopPoll(); $("#go").disabled = false; $("#activego").disabled = false; loadHistory(); }
+  const cveIdle = !["queued", "running"].includes(s.cve_status);
+  if (passiveDone && activeIdle && cveIdle) { stopPoll(); $("#go").disabled = false; $("#activego").disabled = false; $("#cvego").disabled = false; loadHistory(); }
+}
+
+function renderCve(s) {
+  const passiveDone = ["done", "error", "canceled"].includes(s.status);
+  $("#cvecard").classList.toggle("hide", !passiveDone || s.status === "error");
+  const running = ["queued", "running"].includes(s.cve_status);
+  $("#cvego").disabled = running;
+  $("#cvego").textContent = running ? t("cve_running") : (s.cve_status === "done" ? t("cve_done") + " · " + t("cve_go") : t("cve_go"));
+  $("#cveprog").classList.toggle("hide", !running);
+  if (running) {
+    const fill = $("#cprogbar").querySelector("i");
+    const pct = s.cve_total ? Math.round(s.cve_done / s.cve_total * 100) : 0;
+    fill.style.width = pct + "%";
+    $("#cstage").textContent = t("cve_scanning");
+    $("#cprogtxt").textContent = `${s.cve_done || 0} / ${s.cve_total || 0}`;
+  }
 }
 
 function renderProgress(s) {
@@ -118,7 +146,7 @@ function renderActive(s) {
 
 // „kitett” = valóban kockázatos szolgáltatás (DB/admin/nyílt adattár) vagy sebezhetőség-találat.
 // Egy sima nyitott port (pl. 22/SSH, 25/SMTP) önmagában NEM tesz egy hostot kitetté.
-function isExposed(h) { return !!((h.exposed_flags && h.exposed_flags.length) || (h.vuln && h.vuln.length)); }
+function isExposed(h) { return !!((h.exposed_flags && h.exposed_flags.length) || (h.vuln && h.vuln.length) || (h.cve && h.cve.length)); }
 function hasTakeover(h) { return h.takeover && h.takeover.service; }
 
 function renderStats() {
@@ -139,6 +167,8 @@ function renderStats() {
     const cls = pqSafe === pqAssessed.length ? "good" : pqSafe ? "warn" : "bad";
     html += `<div class="stat ${cls}" data-tip="${esc(explainRec("pq"))}"><b>${t("m_pq")}</b><span>${pqSafe}/${pqAssessed.length}</span></div>`;
   }
+  const cveHosts = hosts.filter(h => h.cve && h.cve.length).length;
+  if (cveHosts) html += `<div class="stat bad" data-tip="${esc(explainRec("cve"))}"><b>${t("m_cve")}</b><span>${cveHosts}</span></div>`;
   $("#stats").innerHTML = html;
 }
 
@@ -272,6 +302,7 @@ function renderDetail(h) {
   const tech = (h.tech && h.tech.length) ? `<div class="kv"><b>${t("d_tech")}:</b> ${h.tech.map(x => `<span class="tag">${esc(x)}</span>`).join(" ")}</div>` : "";
   const exp = (h.exposed_flags && h.exposed_flags.length) ? `<div class="kv" data-tip="${esc(explainRec("exposed"))}"><b>${t("d_exposed")}:</b> ${h.exposed_flags.map(x => `<span class="tag san">${esc(x)}</span>`).join(" ")}</div>` : "";
   const vuln = (h.vuln && h.vuln.length) ? `<div class="kv"><b>${t("d_vuln")}:</b> ${h.vuln.map(v => `<span class="bdg ${SEVCLS[v.severity] || ""}" data-tip="${esc(v.evidence || "")}">${esc(v.severity)}: ${esc(v.title)}</span>`).join(" ")}</div>` : "";
+  const cve = (h.cve && h.cve.length) ? `<div class="kv"><b>${t("d_cve")}:</b> ${h.cve.map(v => `<span class="bdg ${SEVCLS[v.severity] || ""}" data-tip="${esc(v.evidence || "")}">${esc(v.severity)}: ${esc(v.title)}</span>`).join(" ")}</div>` : "";
   const pq = h.pq && h.pq.kex ? pqBlock(h.pq) : "";
   const sans = (h.tls_sans && h.tls_sans.length) ? `<div class="kv"><b>${t("d_sans")}:</b> ${h.tls_sans.map(s => `<span class="tag san">${esc(s)}</span>`).join(" ")}</div>` : "";
 
@@ -296,7 +327,7 @@ function renderDetail(h) {
   return `<div class="detail">
     <div class="kv">${h.cname ? `<span data-tip="${esc(explainRec("cname"))}"><b>${t("d_cname")}:</b> ${esc(h.cname)}</span>` : ""}
       <span><b>${t("d_source")}:</b> ${h.source_brute ? "brute" : "passzív"}</span></div>
-    ${ipsTable}${tk}${vuln}${pq}${tech}${exp}${sans}${portsTbl}</div>`;
+    ${ipsTable}${tk}${cve}${vuln}${pq}${tech}${exp}${sans}${portsTbl}</div>`;
 }
 
 // ---- előzmények ----
@@ -335,13 +366,14 @@ async function openScan(id) {
 
 function resetView() {
   current = null; stopPoll();
-  ["results", "stats", "progcard", "posture", "activecard"].forEach(id => $("#" + id).classList.add("hide"));
+  ["results", "stats", "progcard", "posture", "activecard", "cvecard"].forEach(id => $("#" + id).classList.add("hide"));
 }
 
 // ---- vezérlők ----
 $("#go").addEventListener("click", startScan);
 $("#domain").addEventListener("keydown", e => { if (e.key === "Enter") startScan(); });
 $("#activego").addEventListener("click", startActive);
+$("#cvego").addEventListener("click", startCve);
 $("#filter").addEventListener("input", renderHosts);
 $("#cancel").addEventListener("click", async () => { if (current) await fetch(`/api/scan/${current}/cancel`, {method: "POST"}); });
 $("#newscan").addEventListener("click", () => { resetView(); try { history.replaceState(null, "", location.pathname); } catch (e) { /* no-op */ } $("#domain").focus(); });
