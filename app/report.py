@@ -408,33 +408,70 @@ def build_xlsx(scan: dict, hosts: list[dict], classification: str = "Confidentia
 
 
 # ---------------- Nyomtatható HTML-jelentés (böngészőből PDF) ----------------
-_STATUS_BADGE = {"takeover": ("TAKEOVER", "bad"), "exposed": ("KITETT", "warn"),
-                 "live": ("élő", "good"), "dead": ("nem él", "muted")}
+_RT = {
+ "hu": {"doc":"domain-recon jelentés","title":"Feltérképezési jelentés —","back":"← Vissza",
+   "print":"Nyomtatás / PDF mentés","md":"Markdown","content":"Tartalom",
+   "passive":"passzív","active":"aktív","cve":"CVE",
+   "st_host":"Host","st_live":"Élő","st_tk":"Takeover","st_exp":"Kitett","st_ports":"Nyitott port","st_cve":"CVE-találat",
+   "posture":"DNS / e-mail posture","present":"✓ van","missing":"✗ hiányzik","none":"✗ nincs","wildcard":"Wildcard DNS",
+   "attn":"⚠ Figyelmet igénylő hostok","live":"Élő hostok","dead":"Nem élő / fel nem oldott",
+   "b_tk":"TAKEOVER","b_exp":"KITETT","b_live":"élő","b_dead":"nem él",
+   "ip":"IP","cname":"CNAME","source":"Forrás","brute":"brute","psv":"passzív","tech":"Technológia",
+   "takeover":"Lehetséges takeover","confirmed":"megerősítve","suspected":"gyanús",
+   "cve_ver":"Ismert CVE — verzió alapján","cve_fp":"Ismert CVE — ujjlenyomat alapján","vuln":"Kitettség / sebezhetőség",
+   "exposed_svc":"Kitett szolgáltatás","pq":"Kvantum-reziliencia (TLS)",
+   "pq_hybrid":"kvantum-biztos (hibrid ML-KEM)","pq_classical":"klasszikus — HNDL-kockázat","pq_unknown":"ismeretlen",
+   "pq_kex":"kulcscsere","pq_cert":"cert","pq_sig":"aláírás",
+   "th_port":"Port","th_svc":"Szolgáltatás","th_detail":"Részlet","th_rtt":"RTT","tls_san":"TLS SAN",
+   "footer":"sadrobot · domain-recon · csak engedélyezett célpontra",
+   "pr_full":"Teljes","pr_cve":"Csak CVE","pr_php":"PHP CVE","pr_apache":"Apache CVE","pr_conf":"Confluence CVE"},
+ "en": {"doc":"domain-recon report","title":"Reconnaissance report —","back":"← Back",
+   "print":"Print / Save as PDF","md":"Markdown","content":"Content",
+   "passive":"passive","active":"active","cve":"CVE",
+   "st_host":"Hosts","st_live":"Live","st_tk":"Takeover","st_exp":"Exposed","st_ports":"Open ports","st_cve":"CVE hits",
+   "posture":"DNS / email posture","present":"✓ present","missing":"✗ missing","none":"✗ none","wildcard":"Wildcard DNS",
+   "attn":"⚠ Hosts needing attention","live":"Live hosts","dead":"Dead / unresolved",
+   "b_tk":"TAKEOVER","b_exp":"EXPOSED","b_live":"live","b_dead":"dead",
+   "ip":"IP","cname":"CNAME","source":"Source","brute":"brute","psv":"passive","tech":"Technology",
+   "takeover":"Possible takeover","confirmed":"confirmed","suspected":"suspected",
+   "cve_ver":"Known CVE — by version","cve_fp":"Known CVE — by fingerprint","vuln":"Exposure / vulnerability",
+   "exposed_svc":"Exposed service","pq":"Quantum resilience (TLS)",
+   "pq_hybrid":"quantum-safe (hybrid ML-KEM)","pq_classical":"classical — HNDL risk","pq_unknown":"unknown",
+   "pq_kex":"key exchange","pq_cert":"cert","pq_sig":"signature",
+   "th_port":"Port","th_svc":"Service","th_detail":"Detail","th_rtt":"RTT","tls_san":"TLS SAN",
+   "footer":"sadrobot · domain-recon · authorised targets only",
+   "pr_full":"Full","pr_cve":"CVE only","pr_php":"PHP CVE","pr_apache":"Apache CVE","pr_conf":"Confluence CVE"},
+}
+# preset -> (focus, cve-szűrő)
+_PRESETS = [("full", ("full", "")), ("cve", ("cve", "")), ("php", ("cve", "php")),
+            ("apache", ("cve", "apache")), ("conf", ("cve", "confluence"))]
+_BADGE_CLS = {"takeover": "bad", "exposed": "warn", "live": "good", "dead": "muted"}
 
 
-def _host_html(h: dict) -> str:
+def _cve_match(v, flt):
+    if not flt:
+        return True
+    hay = (str(v.get("id", "")) + " " + str(v.get("cve", "")) + " " + str(v.get("title", ""))).lower()
+    return flt.lower() in hay
+
+
+def _host_html(h: dict, t: dict, focus: str = "full", cvefilter: str = "") -> str:
     st = _status(h)
-    label, cls = _STATUS_BADGE[st]
+    cls = _BADGE_CLS[st]
+    label = t["b_" + ("tk" if st == "takeover" else "exp" if st == "exposed" else st)]
     out = [f'<section class="host {cls}"><h3>{E(h["host"])} <span class="badge {cls}">{label}</span></h3>']
     meta = []
     if h.get("ips"):
-        meta.append("IP: " + E(", ".join(h["ips"])))
+        meta.append(t["ip"] + ": " + E(", ".join(h["ips"])))
     if h.get("cname"):
-        meta.append("CNAME: " + E(h["cname"]))
-    meta.append("Forrás: " + ("brute" if h.get("source_brute") else "passzív"))
+        meta.append(t["cname"] + ": " + E(h["cname"]))
+    meta.append(t["source"] + ": " + (t["brute"] if h.get("source_brute") else t["psv"]))
     out.append('<p class="meta">' + " · ".join(meta) + "</p>")
-    info = h.get("ips_info") or []
-    if any(i.get("asn") or i.get("ptr") for i in info):
-        rows = "".join(f"<tr><td>{E(i.get('ip',''))}</td><td>{E(i.get('ptr') or '—')}</td>"
-                       f"<td>{('AS'+E(str(i['asn']))) if i.get('asn') else '—'}</td>"
-                       f"<td>{E(i.get('org') or '—')}</td><td>{E(i.get('cc') or '—')}</td></tr>" for i in info)
-        out.append('<table class="t"><tr><th>IP</th><th>PTR</th><th>ASN</th><th>Org</th><th>CC</th></tr>' + rows + "</table>")
-    if h.get("tech"):
-        out.append('<p><b>Technológia:</b> ' + E(", ".join(h["tech"])) + "</p>")
-    if h.get("takeover") and h["takeover"].get("service"):
-        t = h["takeover"]
-        out.append(f'<p class="warn"><b>Lehetséges takeover:</b> {E(t["service"])} → {E(t.get("cname",""))} '
-                   f'({"megerősítve" if t.get("confirmed") else "gyanús"})</p>')
+
+    cves = h.get("cve") or []
+    ver_cves = [v for v in cves if (v.get("method") or "version") == "version" and _cve_match(v, cvefilter)]
+    fp_cves = [v for v in cves if v.get("method") == "fingerprint" and _cve_match(v, cvefilter)]
+
     def _find_list(items, title):
         if not items:
             return
@@ -442,56 +479,79 @@ def _host_html(h: dict) -> str:
                      f'{E(v.get("title",""))}{(" (" + E(v["cve"]) + ")") if v.get("cve") and v["cve"] != "—" else ""}'
                      f'{(" — " + E(v["evidence"])) if v.get("evidence") else ""}</li>' for v in items)
         out.append(f'<p><b>{title}:</b></p><ul class="find">{li}</ul>')
-    cves = h.get("cve") or []
-    _find_list([v for v in cves if (v.get("method") or "version") == "version"], "Ismert CVE — verzió alapján")
-    _find_list([v for v in cves if v.get("method") == "fingerprint"], "Ismert CVE — ujjlenyomat alapján")
-    _find_list(h.get("vuln") or [], "Kitettség / sebezhetőség")
+
+    if focus == "cve":
+        # csak a (szűrt) CVE-találatok
+        _find_list(ver_cves, t["cve_ver"])
+        _find_list(fp_cves, t["cve_fp"])
+        out.append("</section>")
+        return "".join(out)
+
+    # teljes nézet
+    info = h.get("ips_info") or []
+    if any(i.get("asn") or i.get("ptr") for i in info):
+        rows = "".join(f"<tr><td>{E(i.get('ip',''))}</td><td>{E(i.get('ptr') or '—')}</td>"
+                       f"<td>{('AS'+E(str(i['asn']))) if i.get('asn') else '—'}</td>"
+                       f"<td>{E(i.get('org') or '—')}</td><td>{E(i.get('cc') or '—')}</td></tr>" for i in info)
+        out.append('<table class="t"><tr><th>IP</th><th>PTR</th><th>ASN</th><th>Org</th><th>CC</th></tr>' + rows + "</table>")
+    if h.get("tech"):
+        out.append(f'<p><b>{t["tech"]}:</b> ' + E(", ".join(h["tech"])) + "</p>")
+    if h.get("takeover") and h["takeover"].get("service"):
+        tk = h["takeover"]
+        out.append(f'<p class="warn"><b>{t["takeover"]}:</b> {E(tk["service"])} → {E(tk.get("cname",""))} '
+                   f'({t["confirmed"] if tk.get("confirmed") else t["suspected"]})</p>')
+    _find_list(ver_cves, t["cve_ver"])
+    _find_list(fp_cves, t["cve_fp"])
+    _find_list(h.get("vuln") or [], t["vuln"])
     if h.get("exposed_flags"):
-        out.append('<p><b>Kitett szolgáltatás:</b> ' + E(", ".join(h["exposed_flags"])) + "</p>")
+        out.append(f'<p><b>{t["exposed_svc"]}:</b> ' + E(", ".join(h["exposed_flags"])) + "</p>")
     if h.get("pq") and h["pq"].get("kex"):
         pq = h["pq"]; k = pq.get("kex", {}); c = pq.get("cert", {})
-        vmap = {"hybrid": "kvantum-biztos (hibrid ML-KEM)", "classical": "klasszikus — HNDL-kockázat", "unknown": "ismeretlen"}
+        vmap = {"hybrid": t["pq_hybrid"], "classical": t["pq_classical"], "unknown": t["pq_unknown"]}
         det = []
         if k.get("group"):
-            det.append("kulcscsere " + E(k["group"]))
+            det.append(t["pq_kex"] + " " + E(k["group"]))
         if k.get("tls"):
             det.append("TLS " + E(str(k["tls"])))
         if c.get("key_alg"):
-            det.append("cert " + E(c["key_alg"]) + (f" {c['key_bits']}" if c.get("key_bits") else ""))
+            det.append(t["pq_cert"] + " " + E(c["key_alg"]) + (f" {c['key_bits']}" if c.get("key_bits") else ""))
         if c.get("sig_alg"):
-            det.append("aláírás " + E(c["sig_alg"]))
-        out.append(f'<p><b>Kvantum-reziliencia (TLS):</b> {vmap.get(pq.get("verdict"),"?")}'
-                   + (" · " + " · ".join(det) if det else "") + "</p>")
+            det.append(t["pq_sig"] + " " + E(c["sig_alg"]))
+        out.append(f'<p><b>{t["pq"]}:</b> {vmap.get(pq.get("verdict"),"?")}' + (" · " + " · ".join(det) if det else "") + "</p>")
     if h.get("ports"):
         rows = ""
-        for p in h["ports"]:
-            http = p.get("http") or {}; tls = p.get("tls") or {}
+        for pp in h["ports"]:
+            http = pp.get("http") or {}; tls = pp.get("tls") or {}
             det = []
             if http.get("status"):
                 det.append("HTTP " + str(http["status"]))
             for kk in ("server", "powered_by", "title"):
                 if http.get(kk):
                     det.append(E(str(http[kk])))
-            if p.get("tech"):
-                det.append(E(", ".join(p["tech"])))
+            if pp.get("tech"):
+                det.append(E(", ".join(pp["tech"])))
             if tls.get("cn"):
                 det.append("CN=" + E(tls["cn"]))
-            if p.get("banner"):
-                det.append(E(p["banner"]))
-            rows += (f"<tr><td>{p['port']}</td><td>{E(p.get('name','?'))}</td>"
+            if pp.get("banner"):
+                det.append(E(pp["banner"]))
+            rows += (f"<tr><td>{pp['port']}</td><td>{E(pp.get('name','?'))}</td>"
                      f"<td>{' · '.join(str(d) for d in det) or '—'}</td>"
-                     f"<td>{(str(p['rtt_ms'])+' ms') if p.get('rtt_ms') is not None else '—'}</td></tr>")
-        out.append('<table class="t"><tr><th>Port</th><th>Szolgáltatás</th><th>Részlet</th><th>RTT</th></tr>' + rows + "</table>")
+                     f"<td>{(str(pp['rtt_ms'])+' ms') if pp.get('rtt_ms') is not None else '—'}</td></tr>")
+        out.append(f'<table class="t"><tr><th>{t["th_port"]}</th><th>{t["th_svc"]}</th><th>{t["th_detail"]}</th><th>{t["th_rtt"]}</th></tr>' + rows + "</table>")
     if h.get("tls_sans"):
-        out.append('<p><b>TLS SAN:</b> ' + E(", ".join(h["tls_sans"])) + "</p>")
+        out.append(f'<p><b>{t["tls_san"]}:</b> ' + E(", ".join(h["tls_sans"])) + "</p>")
     out.append("</section>")
     return "".join(out)
 
 
-def build_html(scan: dict, hosts: list[dict]) -> str:
+def build_html(scan: dict, hosts: list[dict], lang: str = "hu", focus: str = "full", cve: str = "") -> str:
+    t = _RT.get(lang, _RT["hu"])
+    lang = lang if lang in _RT else "hu"
+    focus = "cve" if focus == "cve" else "full"
     domain = scan.get("domain", "")
     p = scan.get("posture") or {}
     wc = scan.get("wildcard") or []
+    sid = scan.get("id", "")
     n_live = sum(1 for h in hosts if h.get("alive"))
     n_exp = sum(1 for h in hosts if _status(h) == "exposed")
     n_tk = sum(1 for h in hosts if _status(h) == "takeover")
@@ -501,49 +561,67 @@ def build_html(scan: dict, hosts: list[dict]) -> str:
 
     def stat(lbl, val):
         return f'<div class="s"><b>{lbl}</b><span>{val}</span></div>'
-    stats = stat("Host", len(hosts)) + stat("Élő", n_live) + stat("Takeover", n_tk) + stat("Kitett", n_exp) \
-        + stat("Nyitott port", n_ports) + (stat("CVE-találat", n_cve) if n_cve else "")
+    stats = stat(t["st_host"], len(hosts)) + stat(t["st_live"], n_live) + stat(t["st_tk"], n_tk) + stat(t["st_exp"], n_exp) \
+        + stat(t["st_ports"], n_ports) + (stat(t["st_cve"], n_cve) if n_cve else "")
 
     posture = ""
-    if p:
+    if p and focus != "cve":
         def ok(v):
-            return '<span class="ok">✓ van</span>' if v else '<span class="no">✗ hiányzik</span>'
-        posture = ("<h2>DNS / e-mail posture</h2><ul class=\"post\">"
-                   f"<li>SPF: {ok(p.get('spf_ok'))}</li><li>DMARC: {ok(p.get('dmarc_ok'))}</li>"
-                   f"<li>DKIM: {E(', '.join(p.get('dkim') or [])) or '✗ nincs'}</li>"
-                   f"<li>CAA: {E(', '.join(p.get('caa') or [])) or '✗ nincs'}</li>"
-                   f"<li>MX: {E(', '.join(p.get('mx') or [])) or '✗ nincs'}</li>"
-                   f"<li>NS: {E(', '.join(p.get('ns') or [])) or '—'}</li></ul>")
+            return f'<span class="ok">{t["present"]}</span>' if v else f'<span class="no">{t["missing"]}</span>'
+        posture = (f'<h2>{t["posture"]}</h2><ul class="post">'
+                   f'<li>SPF: {ok(p.get("spf_ok"))}</li><li>DMARC: {ok(p.get("dmarc_ok"))}</li>'
+                   f'<li>DKIM: {E(", ".join(p.get("dkim") or [])) or t["none"]}</li>'
+                   f'<li>CAA: {E(", ".join(p.get("caa") or [])) or t["none"]}</li>'
+                   f'<li>MX: {E(", ".join(p.get("mx") or [])) or t["none"]}</li>'
+                   f'<li>NS: {E(", ".join(p.get("ns") or [])) or "—"}</li></ul>')
         if wc:
-            posture += f'<p class="warn">Wildcard DNS: {E(", ".join(wc))}</p>'
+            posture += f'<p class="warn">{t["wildcard"]}: {E(", ".join(wc))}</p>'
 
-    order = {"takeover": 0, "exposed": 1, "live": 2, "dead": 3}
-    attn = sorted([h for h in hosts if _status(h) in ("takeover", "exposed")], key=lambda h: (order[_status(h)], h["host"]))
-    live = sorted([h for h in hosts if _status(h) == "live"], key=lambda h: h["host"])
-    dead = sorted([h for h in hosts if _status(h) == "dead"], key=lambda h: h["host"])
-    body = ""
-    if attn:
-        body += "<h2>⚠ Figyelmet igénylő hostok</h2>" + "".join(_host_html(h) for h in attn)
-    if live:
-        body += "<h2>Élő hostok</h2>" + "".join(_host_html(h) for h in live)
-    if dead:
-        body += "<h2>Nem élő / fel nem oldott</h2><p class=\"meta\">" + E(", ".join(h["host"] for h in dead)) + "</p>"
+    cvefilter = cve.strip()
+    if focus == "cve":
+        shown = [h for h in hosts if any(_cve_match(v, cvefilter) for v in (h.get("cve") or []))]
+        shown.sort(key=lambda h: h["host"])
+        body = ("".join(_host_html(h, t, "cve", cvefilter) for h in shown)
+                if shown else f'<p class="meta">—</p>')
+    else:
+        order = {"takeover": 0, "exposed": 1, "live": 2, "dead": 3}
+        attn = sorted([h for h in hosts if _status(h) in ("takeover", "exposed")], key=lambda h: (order[_status(h)], h["host"]))
+        live = sorted([h for h in hosts if _status(h) == "live"], key=lambda h: h["host"])
+        dead = sorted([h for h in hosts if _status(h) == "dead"], key=lambda h: h["host"])
+        body = ""
+        if attn:
+            body += f'<h2>{t["attn"]}</h2>' + "".join(_host_html(h, t) for h in attn)
+        if live:
+            body += f'<h2>{t["live"]}</h2>' + "".join(_host_html(h, t) for h in live)
+        if dead:
+            body += f'<h2>{t["dead"]}</h2><p class="meta">' + E(", ".join(h["host"] for h in dead)) + "</p>"
 
-    return f"""<!doctype html><html lang="hu"><head><meta charset="utf-8">
+    # vezérlősor: nyelv + tartalom-preset (újratölt szerveroldalon)
+    def _link(href, text, active):
+        return f'<a class="pill{" on" if active else ""}" href="{href}">{text}</a>'
+    langbar = _link(f"/report?id={E(sid)}&lang=hu&focus={focus}&cve={E(cvefilter)}", "HU", lang == "hu") \
+        + _link(f"/report?id={E(sid)}&lang=en&focus={focus}&cve={E(cvefilter)}", "EN", lang == "en")
+    presetbar = "".join(_link(f"/report?id={E(sid)}&lang={lang}&focus={fc}&cve={E(cf)}",
+                              t["pr_" + name], focus == fc and cvefilter.lower() == cf.lower())
+                        for name, (fc, cf) in _PRESETS)
+
+    return f"""<!doctype html><html lang="{lang}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow">
-<title>domain-recon jelentés — {E(domain)}</title>
+<title>{t["doc"]} — {E(domain)}</title>
 <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/report.css">
 <script src="/static/report-print.js" defer></script></head>
 <body><div class="page">
-<div class="bar no-print"><a href="/#{E(scan.get('id',''))}">← Vissza</a>
-<button id="print" type="button">Nyomtatás / PDF mentés</button>
-<a href="/api/export/{E(scan.get('id',''))}.md">Markdown</a></div>
+<div class="bar no-print"><a href="/#{E(sid)}">{t["back"]}</a>
+<button id="print" type="button">{t["print"]}</button>
+<a href="/api/export/{E(sid)}.md">{t["md"]}</a>
+<span class="pills">{langbar}</span></div>
+<div class="bar no-print"><span class="lbl">{t["content"]}:</span><span class="pills">{presetbar}</span></div>
 <header><div class="brand">SADROBOT // RECON</div>
-<h1>Feltérképezési jelentés — {E(domain)}</h1>
-<p class="sub">{_fmt_dt(scan.get('created'))} · {ver} · passzív: {E(str(scan.get('status','?')))} · aktív: {E(str(scan.get('active_status','none')))} · CVE: {E(str(scan.get('cve_status','none')))}</p></header>
+<h1>{t["title"]} {E(domain)}</h1>
+<p class="sub">{_fmt_dt(scan.get('created'))} · {ver} · {t["passive"]}: {E(str(scan.get('status','?')))} · {t["active"]}: {E(str(scan.get('active_status','none')))} · {t["cve"]}: {E(str(scan.get('cve_status','none')))}</p></header>
 <div class="stats">{stats}</div>
 {posture}
 {body}
-<footer>sadrobot · domain-recon · csak engedélyezett célpontra</footer>
+<footer>{t["footer"]}</footer>
 </div></body></html>"""

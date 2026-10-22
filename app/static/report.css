@@ -53,3 +53,12 @@ footer{margin-top:28px;padding-top:12px;border-top:1px solid var(--line);
   .host,.s{border-color:#ccc}
   h2{page-break-after:avoid}
 }
+
+/* vezérlősor: nyelv + tartalom-preset */
+.bar .lbl{font:600 11px system-ui;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);align-self:center}
+.pills{display:inline-flex;gap:4px;flex-wrap:wrap}
+.pill{font:600 12px system-ui;padding:6px 11px;border:1px solid var(--line);border-radius:999px;
+  background:var(--card);color:var(--ink2);text-decoration:none}
+.pill:hover{border-color:var(--accent);color:var(--accent)}
+.pill.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.bar{flex-wrap:wrap}

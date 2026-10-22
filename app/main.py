@@ -116,12 +116,16 @@ async def graph():
 
 @app.get("/report")
 async def report_page(request: Request):
-    sid = request.query_params.get("id", "")
+    q = request.query_params
+    sid = q.get("id", "")
     s = db.get_scan(sid)
     if not s:
         raise HTTPException(404, "Nincs ilyen vizsgálat.")
     s["version"], s["build"] = __version__, BUILD
-    return Response(report.build_html(s, db.hosts(sid)),
+    lang = q.get("lang", "hu")
+    focus = q.get("focus", "full")
+    cve = q.get("cve", "")[:40]
+    return Response(report.build_html(s, db.hosts(sid), lang=lang, focus=focus, cve=cve),
                     media_type="text/html; charset=utf-8", headers=_NOCACHE)
 
 
