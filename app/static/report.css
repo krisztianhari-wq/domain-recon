@@ -46,12 +46,14 @@ ul.find .sev-medium,ul.find .sev-low{color:var(--warn)}
 footer{margin-top:28px;padding-top:12px;border-top:1px solid var(--line);
   color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em}
 @media print{
-  @page{size:A4;margin:14mm}
-  body{background:#fff}
-  .page{max-width:none;padding:0}
+  @page{size:A4;margin:12mm}
+  html,body{background:#fff;height:auto;overflow:visible;color:#14202a}
+  .page{max-width:none;padding:0;margin:0;display:block}
   .no-print{display:none!important}
-  .host,.s{border-color:#ccc}
-  h2{page-break-after:avoid}
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}   /* háttér/keret is nyomtatódjon */
+  .host,.s{border-color:#ccc;break-inside:avoid}
+  .host{box-shadow:none}
+  h2{break-after:avoid}
 }
 
 /* vezérlősor: nyelv + tartalom-preset */
