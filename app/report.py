@@ -66,7 +66,11 @@ def _host_clean(h: dict) -> dict:
     if h.get("vuln"):
         out["vulnerabilities"] = h["vuln"]
     if h.get("cve"):
-        out["known_cves"] = h["cve"]
+        cves = h["cve"]
+        out["known_cves"] = {
+            "by_version": [v for v in cves if (v.get("method") or "version") == "version"],
+            "by_fingerprint": [v for v in cves if v.get("method") == "fingerprint"],
+        }
     if h.get("takeover") and h["takeover"].get("service"):
         out["takeover"] = h["takeover"]
     if h.get("pq") and h["pq"].get("kex"):
@@ -167,13 +171,19 @@ def _host_md(h: dict) -> str:
         for v in h["vuln"]:
             ev = f" — {v['evidence']}" if v.get("evidence") else ""
             lines.append(f"- [{v.get('severity','?')}] {v.get('title','')}{ev}")
-    # ismert CVE (verzió alapján)
-    if h.get("cve"):
+    # ismert CVE – külön verzió- és ujjlenyomat-alapú csoport
+    def _md_cve(items, title):
+        if not items:
+            return
         lines.append("")
-        lines.append("**Ismert sebezhetőség (CVE, verzió alapján):**")
-        for v in h["cve"]:
+        lines.append(f"**{title}:**")
+        for v in items:
+            cve = f" ({v['cve']})" if v.get("cve") and v["cve"] != "—" else ""
             ev = f" — {v['evidence']}" if v.get("evidence") else ""
-            lines.append(f"- [{v.get('severity','?')}] {v.get('title','')}{ev}")
+            lines.append(f"- [{v.get('severity','?')}] {v.get('title','')}{cve}{ev}")
+    cves = h.get("cve") or []
+    _md_cve([v for v in cves if (v.get("method") or "version") == "version"], "Ismert CVE — verzió alapján")
+    _md_cve([v for v in cves if v.get("method") == "fingerprint"], "Ismert CVE — ujjlenyomat alapján")
     # portok
     if h.get("ports"):
         lines.append("")
@@ -425,12 +435,17 @@ def _host_html(h: dict) -> str:
         t = h["takeover"]
         out.append(f'<p class="warn"><b>Lehetséges takeover:</b> {E(t["service"])} → {E(t.get("cname",""))} '
                    f'({"megerősítve" if t.get("confirmed") else "gyanús"})</p>')
-    for key, title in (("cve", "Ismert sebezhetőség (CVE)"), ("vuln", "Kitettség / sebezhetőség")):
-        if h.get(key):
-            items = "".join(f'<li class="sev-{E(str(v.get("severity","")))}"><b>{E(str(v.get("severity","")))}:</b> '
-                            f'{E(v.get("title",""))}{(" — " + E(v["evidence"])) if v.get("evidence") else ""}</li>'
-                            for v in h[key])
-            out.append(f"<p><b>{title}:</b></p><ul class=\"find\">{items}</ul>")
+    def _find_list(items, title):
+        if not items:
+            return
+        li = "".join(f'<li class="sev-{E(str(v.get("severity","")))}"><b>{E(str(v.get("severity","")))}:</b> '
+                     f'{E(v.get("title",""))}{(" (" + E(v["cve"]) + ")") if v.get("cve") and v["cve"] != "—" else ""}'
+                     f'{(" — " + E(v["evidence"])) if v.get("evidence") else ""}</li>' for v in items)
+        out.append(f'<p><b>{title}:</b></p><ul class="find">{li}</ul>')
+    cves = h.get("cve") or []
+    _find_list([v for v in cves if (v.get("method") or "version") == "version"], "Ismert CVE — verzió alapján")
+    _find_list([v for v in cves if v.get("method") == "fingerprint"], "Ismert CVE — ujjlenyomat alapján")
+    _find_list(h.get("vuln") or [], "Kitettség / sebezhetőség")
     if h.get("exposed_flags"):
         out.append('<p><b>Kitett szolgáltatás:</b> ' + E(", ".join(h["exposed_flags"])) + "</p>")
     if h.get("pq") and h["pq"].get("kex"):

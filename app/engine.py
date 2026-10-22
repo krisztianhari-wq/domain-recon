@@ -29,6 +29,7 @@ import httpx
 from . import enrich
 from . import fingerprint as fp
 from . import netchecks as nc
+from . import cvescan
 from . import pqscan
 from . import sources
 from . import vulncheck
@@ -478,7 +479,12 @@ class Engine:
                     break
             except Exception:  # noqa: BLE001
                 continue
-        return vulncheck.php_cve_findings(powered, server)
+        findings = cvescan.version_cves(server, powered)        # A) verzió-alapú
+        try:
+            findings += await cvescan.fingerprint_cves(client, host)   # B) ujjlenyomat-alapú
+        except Exception:  # noqa: BLE001
+            pass
+        return findings
 
 
 # ---- indítók ----
