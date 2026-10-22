@@ -47,6 +47,7 @@ ALLOWED = [h.strip() for h in os.getenv("RECON_ALLOWED_HOSTS", "").split(",") if
 MAX_SCANS = int(os.getenv("RECON_MAX_CONCURRENCY", "2"))
 KEEP = int(os.getenv("RECON_KEEP", "60"))
 MAX_BODY = 4096
+IMPORT_MAX = int(os.getenv("RECON_IMPORT_MAX", str(8 * 1024 * 1024)))   # XLS/CSV-import feltöltési korlát
 PROXY_SECRET = os.getenv("RECON_PROXY_SECRET", "")   # ha be van állítva, csak a Caddy X-Recon-Proxy fejlécét fogadjuk el
 
 HOST_RE = re.compile(r"^(?=.{1,253}$)(?!-)[A-Za-z0-9-]{1,63}(?<!-)(\.(?!-)[A-Za-z0-9-]{1,63}(?<!-))+$")
@@ -81,7 +82,8 @@ async def guard(request: Request, call_next):
             return PlainTextResponse("bad host", status_code=400)
     # kéréstörzs-limit
     cl = request.headers.get("content-length")
-    if cl and cl.isdigit() and int(cl) > MAX_BODY:
+    limit = IMPORT_MAX if request.url.path == "/api/import" else MAX_BODY   # az XLS/CSV-import nagyobb törzset kaphat
+    if cl and cl.isdigit() and int(cl) > limit:
         return PlainTextResponse("payload too large", status_code=413)
     resp = await call_next(request)
     for k, v in SEC_HEADERS.items():
@@ -185,6 +187,79 @@ def _expand_ips(s: str):
     return [s], 1
 
 
+def _parse_targets(cells, allow_private: bool = False) -> tuple[list[str], int]:
+    """Cellaszövegekből IP / CIDR / tartomány tokenek → egyedi, szkennelhető IP-lista (capelve) + nyers darabszám.
+    A szűrés az engine SSRF-politikájával egyezik (loopback/link-local/reserved/multicast SOHA; privát csak
+    allow_private-tal). Nem-IP cellák (fejléc, domain, üres) csendben kimaradnak."""
+    seen: set[str] = set()
+    out: list[str] = []
+    raw_count = 0
+    for cell in cells:
+        for tok in re.split(r"[\s,;|]+", str(cell if cell is not None else "").strip()):
+            if not tok:
+                continue
+            try:
+                ips, _ = _expand_ips(tok)
+            except (ValueError, Exception):   # noqa: BLE001  – nem cél: csendben kihagyjuk
+                continue
+            for ip in ips:
+                raw_count += 1
+                if engine.scannable(ip, allow_private) and ip not in seen:
+                    seen.add(ip)
+                    out.append(ip)
+                    if len(out) >= _MAX_TARGET_IPS:
+                        return out, raw_count
+    return out, raw_count
+
+
+def _xlsx_cells(raw: bytes):
+    from openpyxl import load_workbook
+    wb = load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
+    try:
+        for ws in wb.worksheets:
+            for row in ws.iter_rows(values_only=True):
+                for v in row:
+                    if v is not None:
+                        yield v
+    finally:
+        wb.close()
+
+
+def _csv_cells(raw: bytes):
+    text = raw.decode("utf-8", "replace")
+    for row in csv.reader(io.StringIO(text)):
+        for v in row:
+            yield v
+
+
+@app.post("/api/import")
+async def api_import(request: Request):
+    """XLS(X)/CSV feltöltés nyers törzsként (?name=fájlnév) → a benne talált, szkennelhető IP-k listája.
+    Nem indít vizsgálatot; a kliens megerősítés után a /api/scan-t hívja az ips-listával."""
+    name = (request.query_params.get("name") or "").lower()
+    raw = await request.body()
+    if len(raw) > IMPORT_MAX:
+        raise HTTPException(413, "Túl nagy fájl.")
+    if not raw:
+        raise HTTPException(400, "Üres fájl.")
+    try:
+        if name.endswith((".xlsx", ".xlsm")):
+            cells = list(_xlsx_cells(raw))
+        elif name.endswith((".csv", ".txt", ".tsv")) or raw[:4] != b"PK\x03\x04":
+            cells = list(_csv_cells(raw))
+        else:                                   # ismeretlen kiterjesztés, de ZIP-fejléc → xlsx
+            cells = list(_xlsx_cells(raw))
+    except HTTPException:
+        raise
+    except Exception:  # noqa: BLE001
+        raise HTTPException(400, "Nem olvasható fájl (XLSX vagy CSV kell).")
+    allow_private = request.query_params.get("private") in ("1", "true", "yes")
+    ips, raw_count = _parse_targets(cells, allow_private)
+    return {"ips": ips, "count": len(ips), "raw": raw_count,
+            "truncated": len(ips) >= _MAX_TARGET_IPS,
+            "source": request.query_params.get("name") or ""}
+
+
 def _norm_target(raw: str):
     """(kind, label, ips, total). kind: 'domain' → ips None; 'ip' → cím/CIDR/tartomány."""
     s = (raw or "").strip()
@@ -219,7 +294,16 @@ async def api_scan(payload: dict = Body(...)):
                   if s["status"] in ("queued", "running") or s.get("active_status") in ("queued", "running"))
     if running >= MAX_SCANS:
         raise HTTPException(429, f"Már {running} vizsgálat fut. Várd meg, amíg befejeződik.")
-    kind, label, ips, total = _norm_target(payload.get("domain", ""))
+    imported = payload.get("ips")
+    if isinstance(imported, list) and imported:          # XLS/CSV-import: kész IP-lista
+        ips, _raw = _parse_targets(imported, bool(payload.get("allow_private")))
+        if not ips:
+            raise HTTPException(400, "Nincs érvényes (publikus) IP a listában.")
+        src = str(payload.get("source") or "").strip()[:60]
+        kind, total = "ip", len(ips)
+        label = (f"{total} IP" + (f" · {src}" if src else ""))[:120]
+    else:
+        kind, label, ips, total = _norm_target(payload.get("domain", ""))
     # a passzív fázis az alap; az aktív-opciókat eltároljuk a későbbi aktív indításhoz
     opts = _active_opts(payload)
     opts["target_kind"] = kind

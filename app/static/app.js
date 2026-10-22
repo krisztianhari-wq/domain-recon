@@ -51,19 +51,46 @@ $$("#ports button, #intensity button, #livefilter button").forEach(b => {
 // ---- passzív indítás ----
 async function startScan() {
   const domain = $("#domain").value.trim();
-  if (!domain) { $("#domain").focus(); return; }
+  const useImport = importedIps && importedIps.length;
+  if (!domain && !useImport) { $("#domain").focus(); return; }
   bruteSuggested = false;
   $("#go").disabled = true;
+  const body = useImport ? {ips: importedIps, source: importedSource} : {domain};
   try {
-    const r = await fetch("/api/scan", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({domain})});
+    const r = await fetch("/api/scan", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
     if (!r.ok) { const e = await r.json().catch(() => ({})); alert(e.detail || t("err_start")); $("#go").disabled = false; return; }
     const s = await r.json();
+    clearImport();
     current = s.id;
     try { history.replaceState(null, "", `#${s.id}`); } catch (e) { /* no-op */ }
     $("#results").classList.remove("hide");
     $("#progcard").classList.remove("hide");
     startPoll();
   } catch (e) { alert(t("err_start")); $("#go").disabled = false; }
+}
+
+// ---- IP-k betöltése XLS/CSV-ből ----
+let importedIps = null, importedSource = "";
+function clearImport() {
+  importedIps = null; importedSource = "";
+  const n = $("#importnote"); if (n) { n.classList.add("hide"); n.classList.remove("warn"); n.textContent = ""; }
+}
+async function onImportFile(ev) {
+  const f = ev.target.files && ev.target.files[0];
+  ev.target.value = "";                 // ugyanaz a fájl újra választható legyen
+  if (!f) return;
+  const note = $("#importnote");
+  note.classList.remove("hide", "warn"); note.textContent = t("import_loading");
+  try {
+    const r = await fetch("/api/import?name=" + encodeURIComponent(f.name), {method: "POST", body: f});
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { note.classList.add("warn"); note.textContent = j.detail || t("import_err"); return; }
+    if (!j.count) { importedIps = null; note.classList.add("warn"); note.textContent = t("import_none"); return; }
+    importedIps = j.ips; importedSource = j.source || f.name;
+    $("#domain").value = "";
+    note.textContent = t("import_ok").replace("{n}", j.count).replace("{f}", importedSource)
+      + (j.truncated ? " " + t("import_trunc") : "");
+  } catch (e) { note.classList.add("warn"); note.textContent = t("import_err"); }
 }
 
 // ---- aktív indítás ----
@@ -435,6 +462,9 @@ function resetView() {
 // ---- vezérlők ----
 $("#go").addEventListener("click", startScan);
 $("#domain").addEventListener("keydown", e => { if (e.key === "Enter") startScan(); });
+$("#domain").addEventListener("input", () => { if (importedIps) clearImport(); });
+$("#importbtn").addEventListener("click", () => $("#importfile").click());
+$("#importfile").addEventListener("change", onImportFile);
 $("#activego").addEventListener("click", startActive);
 $("#cvego").addEventListener("click", startCve);
 $("#filter").addEventListener("input", renderHosts);
