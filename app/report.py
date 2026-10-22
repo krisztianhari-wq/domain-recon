@@ -5,8 +5,11 @@ takeover) jól elkülönítve, átlátható szekciókban jelenjenek meg — ne e
 """
 from __future__ import annotations
 
+import html
 import io
 import time
+
+E = html.escape
 
 
 def _status(h: dict) -> str:
@@ -392,3 +395,140 @@ def build_xlsx(scan: dict, hosts: list[dict], classification: str = "Confidentia
     out = io.BytesIO()
     wb.save(out)
     return out.getvalue()
+
+
+# ---------------- Nyomtatható HTML-jelentés (böngészőből PDF) ----------------
+_STATUS_BADGE = {"takeover": ("TAKEOVER", "bad"), "exposed": ("KITETT", "warn"),
+                 "live": ("élő", "good"), "dead": ("nem él", "muted")}
+
+
+def _host_html(h: dict) -> str:
+    st = _status(h)
+    label, cls = _STATUS_BADGE[st]
+    out = [f'<section class="host {cls}"><h3>{E(h["host"])} <span class="badge {cls}">{label}</span></h3>']
+    meta = []
+    if h.get("ips"):
+        meta.append("IP: " + E(", ".join(h["ips"])))
+    if h.get("cname"):
+        meta.append("CNAME: " + E(h["cname"]))
+    meta.append("Forrás: " + ("brute" if h.get("source_brute") else "passzív"))
+    out.append('<p class="meta">' + " · ".join(meta) + "</p>")
+    info = h.get("ips_info") or []
+    if any(i.get("asn") or i.get("ptr") for i in info):
+        rows = "".join(f"<tr><td>{E(i.get('ip',''))}</td><td>{E(i.get('ptr') or '—')}</td>"
+                       f"<td>{('AS'+E(str(i['asn']))) if i.get('asn') else '—'}</td>"
+                       f"<td>{E(i.get('org') or '—')}</td><td>{E(i.get('cc') or '—')}</td></tr>" for i in info)
+        out.append('<table class="t"><tr><th>IP</th><th>PTR</th><th>ASN</th><th>Org</th><th>CC</th></tr>' + rows + "</table>")
+    if h.get("tech"):
+        out.append('<p><b>Technológia:</b> ' + E(", ".join(h["tech"])) + "</p>")
+    if h.get("takeover") and h["takeover"].get("service"):
+        t = h["takeover"]
+        out.append(f'<p class="warn"><b>Lehetséges takeover:</b> {E(t["service"])} → {E(t.get("cname",""))} '
+                   f'({"megerősítve" if t.get("confirmed") else "gyanús"})</p>')
+    for key, title in (("cve", "Ismert sebezhetőség (CVE)"), ("vuln", "Kitettség / sebezhetőség")):
+        if h.get(key):
+            items = "".join(f'<li class="sev-{E(str(v.get("severity","")))}"><b>{E(str(v.get("severity","")))}:</b> '
+                            f'{E(v.get("title",""))}{(" — " + E(v["evidence"])) if v.get("evidence") else ""}</li>'
+                            for v in h[key])
+            out.append(f"<p><b>{title}:</b></p><ul class=\"find\">{items}</ul>")
+    if h.get("exposed_flags"):
+        out.append('<p><b>Kitett szolgáltatás:</b> ' + E(", ".join(h["exposed_flags"])) + "</p>")
+    if h.get("pq") and h["pq"].get("kex"):
+        pq = h["pq"]; k = pq.get("kex", {}); c = pq.get("cert", {})
+        vmap = {"hybrid": "kvantum-biztos (hibrid ML-KEM)", "classical": "klasszikus — HNDL-kockázat", "unknown": "ismeretlen"}
+        det = []
+        if k.get("group"):
+            det.append("kulcscsere " + E(k["group"]))
+        if k.get("tls"):
+            det.append("TLS " + E(str(k["tls"])))
+        if c.get("key_alg"):
+            det.append("cert " + E(c["key_alg"]) + (f" {c['key_bits']}" if c.get("key_bits") else ""))
+        if c.get("sig_alg"):
+            det.append("aláírás " + E(c["sig_alg"]))
+        out.append(f'<p><b>Kvantum-reziliencia (TLS):</b> {vmap.get(pq.get("verdict"),"?")}'
+                   + (" · " + " · ".join(det) if det else "") + "</p>")
+    if h.get("ports"):
+        rows = ""
+        for p in h["ports"]:
+            http = p.get("http") or {}; tls = p.get("tls") or {}
+            det = []
+            if http.get("status"):
+                det.append("HTTP " + str(http["status"]))
+            for kk in ("server", "powered_by", "title"):
+                if http.get(kk):
+                    det.append(E(str(http[kk])))
+            if p.get("tech"):
+                det.append(E(", ".join(p["tech"])))
+            if tls.get("cn"):
+                det.append("CN=" + E(tls["cn"]))
+            if p.get("banner"):
+                det.append(E(p["banner"]))
+            rows += (f"<tr><td>{p['port']}</td><td>{E(p.get('name','?'))}</td>"
+                     f"<td>{' · '.join(str(d) for d in det) or '—'}</td>"
+                     f"<td>{(str(p['rtt_ms'])+' ms') if p.get('rtt_ms') is not None else '—'}</td></tr>")
+        out.append('<table class="t"><tr><th>Port</th><th>Szolgáltatás</th><th>Részlet</th><th>RTT</th></tr>' + rows + "</table>")
+    if h.get("tls_sans"):
+        out.append('<p><b>TLS SAN:</b> ' + E(", ".join(h["tls_sans"])) + "</p>")
+    out.append("</section>")
+    return "".join(out)
+
+
+def build_html(scan: dict, hosts: list[dict]) -> str:
+    domain = scan.get("domain", "")
+    p = scan.get("posture") or {}
+    wc = scan.get("wildcard") or []
+    n_live = sum(1 for h in hosts if h.get("alive"))
+    n_exp = sum(1 for h in hosts if _status(h) == "exposed")
+    n_tk = sum(1 for h in hosts if _status(h) == "takeover")
+    n_cve = sum(1 for h in hosts if h.get("cve"))
+    n_ports = sum(len(h.get("ports", [])) for h in hosts)
+    ver = (f"v{scan['version']}" + (f" ({scan['build']})" if scan.get("build") else "")) if scan.get("version") else ""
+
+    def stat(lbl, val):
+        return f'<div class="s"><b>{lbl}</b><span>{val}</span></div>'
+    stats = stat("Host", len(hosts)) + stat("Élő", n_live) + stat("Takeover", n_tk) + stat("Kitett", n_exp) \
+        + stat("Nyitott port", n_ports) + (stat("CVE-találat", n_cve) if n_cve else "")
+
+    posture = ""
+    if p:
+        def ok(v):
+            return '<span class="ok">✓ van</span>' if v else '<span class="no">✗ hiányzik</span>'
+        posture = ("<h2>DNS / e-mail posture</h2><ul class=\"post\">"
+                   f"<li>SPF: {ok(p.get('spf_ok'))}</li><li>DMARC: {ok(p.get('dmarc_ok'))}</li>"
+                   f"<li>DKIM: {E(', '.join(p.get('dkim') or [])) or '✗ nincs'}</li>"
+                   f"<li>CAA: {E(', '.join(p.get('caa') or [])) or '✗ nincs'}</li>"
+                   f"<li>MX: {E(', '.join(p.get('mx') or [])) or '✗ nincs'}</li>"
+                   f"<li>NS: {E(', '.join(p.get('ns') or [])) or '—'}</li></ul>")
+        if wc:
+            posture += f'<p class="warn">Wildcard DNS: {E(", ".join(wc))}</p>'
+
+    order = {"takeover": 0, "exposed": 1, "live": 2, "dead": 3}
+    attn = sorted([h for h in hosts if _status(h) in ("takeover", "exposed")], key=lambda h: (order[_status(h)], h["host"]))
+    live = sorted([h for h in hosts if _status(h) == "live"], key=lambda h: h["host"])
+    dead = sorted([h for h in hosts if _status(h) == "dead"], key=lambda h: h["host"])
+    body = ""
+    if attn:
+        body += "<h2>⚠ Figyelmet igénylő hostok</h2>" + "".join(_host_html(h) for h in attn)
+    if live:
+        body += "<h2>Élő hostok</h2>" + "".join(_host_html(h) for h in live)
+    if dead:
+        body += "<h2>Nem élő / fel nem oldott</h2><p class=\"meta\">" + E(", ".join(h["host"] for h in dead)) + "</p>"
+
+    return f"""<!doctype html><html lang="hu"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow">
+<title>domain-recon jelentés — {E(domain)}</title>
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/report.css">
+<script src="/static/report-print.js" defer></script></head>
+<body><div class="page">
+<div class="bar no-print"><a href="/#{E(scan.get('id',''))}">← Vissza</a>
+<button id="print" type="button">Nyomtatás / PDF mentés</button>
+<a href="/api/export/{E(scan.get('id',''))}.md">Markdown</a></div>
+<header><div class="brand">SADROBOT // RECON</div>
+<h1>Feltérképezési jelentés — {E(domain)}</h1>
+<p class="sub">{_fmt_dt(scan.get('created'))} · {ver} · passzív: {E(str(scan.get('status','?')))} · aktív: {E(str(scan.get('active_status','none')))} · CVE: {E(str(scan.get('cve_status','none')))}</p></header>
+<div class="stats">{stats}</div>
+{posture}
+{body}
+<footer>sadrobot · domain-recon · csak engedélyezett célpontra</footer>
+</div></body></html>"""

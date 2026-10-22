@@ -72,7 +72,8 @@ async function tick() {
   catch (e) { return; }
   scan = s; hosts = s.hosts || [];
   renderProgress(s); renderActive(s); renderCve(s); renderStats(); renderPosture(s); renderHosts();
-  $("#md").href = `/api/export/${current}.md`;
+  $("#md").href = `/report?id=${current}`;   // nyomtatható PDF-jelentés (böngészőből: Mentés PDF-ként)
+  $("#md").target = "_blank";
   $("#xlsx").href = `/api/export/${current}.xlsx`;
   $("#csv").href = `/api/export/${current}.csv`;
   $("#json").href = `/api/export/${current}.json`;

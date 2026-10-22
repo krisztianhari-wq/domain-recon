@@ -1,0 +1,55 @@
+/* domain-recon – nyomtatható jelentés (PDF). Mindig világos, A4-re optimalizált. */
+:root{--ink:#14202a;--ink2:#46576a;--muted:#7a8a99;--line:#dfe6ec;--accent:#0b8fa0;
+  --good:#16803f;--warn:#9a5b00;--bad:#c0392b;--bg:#eef2f5;--card:#fff}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:14px/1.5 "Helvetica Neue",Arial,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+.page{max-width:900px;margin:0 auto;padding:24px}
+.bar{display:flex;gap:12px;align-items:center;margin-bottom:16px}
+.bar a,.bar button{font:600 13px system-ui;padding:8px 14px;border:1px solid var(--line);border-radius:8px;
+  background:var(--card);color:var(--ink2);text-decoration:none;cursor:pointer}
+.bar button{background:var(--accent);color:#fff;border-color:var(--accent)}
+.bar a:hover,.bar button:hover{filter:brightness(.97)}
+header{border-bottom:3px solid var(--accent);padding-bottom:12px;margin-bottom:18px}
+.brand{font:700 13px system-ui;letter-spacing:.12em;color:var(--accent)}
+h1{font-size:24px;margin:6px 0 4px}
+.sub{color:var(--muted);font-size:12px;margin:0}
+h2{font-size:15px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink2);
+  border-bottom:1px solid var(--line);padding-bottom:5px;margin:26px 0 12px}
+h3{font-size:15px;margin:0 0 6px}
+.stats{display:flex;flex-wrap:wrap;gap:10px;margin:14px 0}
+.s{flex:1;min-width:110px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 14px}
+.s b{display:block;font:600 10px system-ui;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.s span{font-size:22px;font-weight:700}
+ul.post{list-style:none;padding:0;display:flex;flex-wrap:wrap;gap:6px 22px}
+ul.post li{font-size:13px}
+.ok{color:var(--good);font-weight:600}.no{color:var(--warn);font-weight:600}
+.host{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--muted);
+  border-radius:8px;padding:12px 16px;margin:10px 0;page-break-inside:avoid}
+.host.good{border-left-color:var(--good)}.host.warn{border-left-color:var(--warn)}
+.host.bad{border-left-color:var(--bad)}.host.muted{border-left-color:var(--muted)}
+.badge{font:600 10px system-ui;letter-spacing:.06em;padding:2px 8px;border-radius:999px;vertical-align:middle;
+  background:#eef2f5;color:var(--ink2)}
+.badge.good{background:#e6f5ec;color:var(--good)}.badge.warn{background:#fff4e0;color:var(--warn)}
+.badge.bad{background:#fdecea;color:var(--bad)}
+.meta{color:var(--muted);font-size:12px;margin:4px 0}
+.warn{color:var(--warn)}
+p{margin:6px 0}
+table.t{width:100%;border-collapse:collapse;font-size:12.5px;margin:8px 0}
+table.t th{text-align:left;color:var(--muted);font:600 10px system-ui;letter-spacing:.05em;
+  text-transform:uppercase;border-bottom:1px solid var(--line);padding:4px 6px}
+table.t td{padding:4px 6px;border-bottom:1px solid var(--line);vertical-align:top;word-break:break-word}
+ul.find{margin:4px 0;padding-left:18px}
+ul.find li{font-size:13px}
+ul.find .sev-critical,ul.find .sev-high{color:var(--bad)}
+ul.find .sev-medium,ul.find .sev-low{color:var(--warn)}
+footer{margin-top:28px;padding-top:12px;border-top:1px solid var(--line);
+  color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+@media print{
+  @page{size:A4;margin:14mm}
+  body{background:#fff}
+  .page{max-width:none;padding:0}
+  .no-print{display:none!important}
+  .host,.s{border-color:#ccc}
+  h2{page-break-after:avoid}
+}

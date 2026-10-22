@@ -114,6 +114,17 @@ async def graph():
     return _page("graph.html")
 
 
+@app.get("/report")
+async def report_page(request: Request):
+    sid = request.query_params.get("id", "")
+    s = db.get_scan(sid)
+    if not s:
+        raise HTTPException(404, "Nincs ilyen vizsgálat.")
+    s["version"], s["build"] = __version__, BUILD
+    return Response(report.build_html(s, db.hosts(sid)),
+                    media_type="text/html; charset=utf-8", headers=_NOCACHE)
+
+
 @app.get("/healthz")
 async def healthz():
     return PlainTextResponse("ok")
