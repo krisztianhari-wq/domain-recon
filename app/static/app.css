@@ -138,3 +138,6 @@ th[data-tip],td[data-tip]{text-decoration:underline dotted var(--ink-3) 1px;text
   .hrow .hips{grid-column:2/-1;order:4}.hrow .hports{grid-column:1/-1;order:5}
   footer{padding:0 14px 24px}
 }
+
+.stat[data-f]{cursor:pointer;transition:border-color .12s}
+.stat[data-f]:hover{border-color:var(--accent)}

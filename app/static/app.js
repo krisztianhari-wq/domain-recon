@@ -159,19 +159,31 @@ function renderStats() {
   const pqSafe = pqAssessed.filter(h => h.pq.kex.status === "pq").length;
   $("#stats").classList.remove("hide");
   let html = `
-    <div class="stat accent"><b>${t("m_hosts")}</b><span>${hosts.length}</span></div>
-    <div class="stat good"><b>${t("m_live")}</b><span>${live}</span></div>
-    <div class="stat ${tk ? "bad" : ""}" data-tip="${esc(explainRec("takeover"))}"><b>${t("m_takeover")}</b><span>${tk}</span></div>
-    <div class="stat ${exposed ? "warn" : ""}"><b>${t("m_exposed")}</b><span>${exposed}</span></div>
-    <div class="stat"><b>${t("m_ports")}</b><span>${openPorts}</span></div>`;
+    <div class="stat accent" data-f="all"><b>${t("m_hosts")}</b><span>${hosts.length}</span></div>
+    <div class="stat good" data-f="live"><b>${t("m_live")}</b><span>${live}</span></div>
+    <div class="stat ${tk ? "bad" : ""}" data-f="takeover" data-tip="${esc(explainRec("takeover"))}"><b>${t("m_takeover")}</b><span>${tk}</span></div>
+    <div class="stat ${exposed ? "warn" : ""}" data-f="exposed"><b>${t("m_exposed")}</b><span>${exposed}</span></div>
+    <div class="stat" data-f="ports"><b>${t("m_ports")}</b><span>${openPorts}</span></div>`;
   if (pqAssessed.length) {
     const cls = pqSafe === pqAssessed.length ? "good" : pqSafe ? "warn" : "bad";
-    html += `<div class="stat ${cls}" data-tip="${esc(explainRec("pq"))}"><b>${t("m_pq")}</b><span>${pqSafe}/${pqAssessed.length}</span></div>`;
+    html += `<div class="stat ${cls}" data-f="pq" data-tip="${esc(explainRec("pq"))}"><b>${t("m_pq")}</b><span>${pqSafe}/${pqAssessed.length}</span></div>`;
   }
   const cveHosts = hosts.filter(h => h.cve && h.cve.length).length;
-  if (cveHosts) html += `<div class="stat bad" data-tip="${esc(explainRec("cve"))}"><b>${t("m_cve")}</b><span>${cveHosts}</span></div>`;
+  if (cveHosts) html += `<div class="stat bad" data-f="cve" data-tip="${esc(explainRec("cve"))}"><b>${t("m_cve")}</b><span>${cveHosts}</span></div>`;
   $("#stats").innerHTML = html;
 }
+
+// csempe → szűrő
+function setFilter(f) {
+  liveFilter = f;
+  document.querySelectorAll("#livefilter button").forEach(x => x.classList.toggle("on", x.dataset.v === f));
+  renderHosts();
+  $("#results").scrollIntoView({behavior: "smooth", block: "start"});
+}
+$("#stats").addEventListener("click", e => {
+  const tile = e.target.closest(".stat[data-f]");
+  if (tile) setFilter(tile.dataset.f);
+});
 
 function postCell(key, present, value) {
   const cls = present ? "good" : "warn";
@@ -219,6 +231,9 @@ function renderHosts() {
   else if (liveFilter === "dead") list = list.filter(h => !h.alive);
   else if (liveFilter === "exposed") list = list.filter(isExposed);
   else if (liveFilter === "takeover") list = list.filter(hasTakeover);
+  else if (liveFilter === "cve") list = list.filter(h => h.cve && h.cve.length);
+  else if (liveFilter === "ports") list = list.filter(h => (h.ports || []).length);
+  else if (liveFilter === "pq") list = list.filter(h => h.pq && h.pq.kex);
   const rank = h => hasTakeover(h) ? 0 : isExposed(h) ? 1 : h.alive ? 2 : 3;
   list.sort((a, b) => rank(a) - rank(b) || a.host.localeCompare(b.host));
   const box = $("#hostlist");
@@ -245,6 +260,7 @@ function worstVuln(h) {
 function badges(h) {
   let b = "";
   if (hasTakeover(h)) { const st = h.takeover.confirmed ? t("confirmed") : t("suspected"); b += `<span class="bdg bad" data-tip="${esc(explainRec("takeover"))}">takeover: ${esc(h.takeover.service)} (${st})</span>`; }
+  (h.cve || []).forEach(v => { b += `<span class="bdg ${SEVCLS[v.severity] || "bad"}" data-tip="${esc(v.evidence || v.title)}">${esc(v.severity)}: ${esc(v.title)}</span>`; });
   (h.vuln || []).forEach(v => { b += `<span class="bdg ${SEVCLS[v.severity] || ""}" data-tip="${esc(v.evidence || v.title)}">${esc(v.severity)}: ${esc(v.title)}</span>`; });
   if (h.wildcard) b += `<span class="bdg" data-tip="${esc(explainRec("wildcard"))}">${t("wild")}</span>`;
   (h.exposed_flags || []).forEach(f => { b += `<span class="bdg warn" data-tip="${esc(explainRec("exposed"))}">${esc(f)}</span>`; });
@@ -277,9 +293,10 @@ function renderHostRow(h) {
   const ports = h.ports || [];
   const cls = hostClass(h);
   const liveLabel = hasTakeover(h) ? "takeover" : (cls === "exposed" ? t("exposed") : h.alive ? t("live_yes") : t("live_no"));
-  const portHtml = ports.length ? ports.slice(0, 6).map(portChip).join("") + (ports.length > 6 ? `<span class="tag">+${ports.length - 6}</span>` : "")
-    : (badges(h) || `<span class="empty" style="margin:0">—</span>`);
-  return `<details class="hrow ${cls}">
+  const chips = ports.length ? ports.slice(0, 6).map(portChip).join("") + (ports.length > 6 ? `<span class="tag">+${ports.length - 6}</span>` : "") : "";
+  const portHtml = (chips + badges(h)) || `<span class="empty" style="margin:0">—</span>`;   // portok + találat-badge-ek
+  const open = ["cve", "exposed", "takeover"].includes(liveFilter) && (isExposed(h) || hasTakeover(h)) ? " open" : "";
+  return `<details class="hrow ${cls}"${open}>
     <summary>
       <span class="dot"></span>
       <span class="hname"><b>${esc(h.host)}</b><small>${liveLabel}${h.cname ? " · CNAME " + esc(h.cname) : ""}${h.source_brute ? " · brute" : ""}</small></span>

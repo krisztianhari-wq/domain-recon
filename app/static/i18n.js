@@ -28,7 +28,7 @@ const I18N = {
     i_polite: "Kíméletes", i_normal: "Normál", i_aggressive: "Agresszív",
     x_brute: "DNS-brute (prefix-szótár)", x_private: "Privát IP is",
     // lista
-    f_all: "Mind", f_live: "Élő", f_exposed: "Kitett", f_takeover: "Takeover", f_dead: "Nem élő",
+    f_all: "Mind", f_live: "Élő", f_exposed: "Kitett", f_cve: "CVE", f_takeover: "Takeover", f_dead: "Nem élő",
     filter_ph: "Szűrés hostnévre / IP-re / ASN-re / szolgáltatásra…",
     col_graph: "Gráf", col_md: "Jelentés", col_xlsx: "XLSX", col_graph: "Graph", col_md: "Report", col_xlsx: "XLSX", col_export_json: "JSON", col_export_csv: "CSV",
     none: "Nincs találat.", no_hosts: "Nincs host.",
@@ -66,7 +66,7 @@ const I18N = {
     ph_custom: "22,80,443,8000-8100",
     i_polite: "Polite", i_normal: "Normal", i_aggressive: "Aggressive",
     x_brute: "DNS brute (prefix wordlist)", x_private: "Include private IPs",
-    f_all: "All", f_live: "Live", f_exposed: "Exposed", f_takeover: "Takeover", f_dead: "Dead",
+    f_all: "All", f_live: "Live", f_exposed: "Exposed", f_cve: "CVE", f_takeover: "Takeover", f_dead: "Dead",
     filter_ph: "Filter by host / IP / ASN / service…",
     col_export_json: "JSON", col_export_csv: "CSV",
     none: "No matches.", no_hosts: "No hosts.",
