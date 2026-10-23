@@ -186,7 +186,8 @@ function renderSubdomains(s) {   // csak domain-leltárnál (hostlist) látható
   $("#subcard").classList.toggle("hide", !isHostlist || !passiveDone || s.status === "error");
   const running = ["queued", "running"].includes(s.sub_status);
   $("#subgo").disabled = running;
-  $("#subgo").textContent = running ? t("sub_running") : (s.sub_status === "done" ? t("sub_done") + " · " + t("sub_go") : t("sub_go"));
+  $("#subgo").textContent = running ? t("sub_running")
+    : (s.sub_status === "done" ? t("sub_done") + " (+" + (s.sub_done || 0) + ") · " + t("sub_go") : t("sub_go"));
   $("#subprog").classList.toggle("hide", !running);
   if (running) {
     const fill = $("#sprogbar").querySelector("i");
@@ -334,6 +335,7 @@ function renderHosts() {
   else if (liveFilter === "cve") list = list.filter(h => h.cve && h.cve.length);
   else if (liveFilter === "ports") list = list.filter(h => (h.ports || []).length);
   else if (liveFilter === "pq") list = list.filter(h => h.pq && h.pq.kex);
+  else if (liveFilter === "sub") list = list.filter(h => h.from_sub);
   const rank = h => hasTakeover(h) ? 0 : isExposed(h) ? 1 : h.alive ? 2 : 3;
   list.sort((a, b) => rank(a) - rank(b) || a.host.localeCompare(b.host));
   const box = $("#hostlist");
@@ -399,7 +401,7 @@ function renderHostRow(h) {
   return `<details class="hrow ${cls}"${open}>
     <summary>
       <span class="dot"></span>
-      <span class="hname"><b>${esc(h.host)}</b><small>${liveLabel}${h.cname ? " · CNAME " + esc(h.cname) : ""}${h.source_brute ? " · brute" : ""}</small></span>
+      <span class="hname"><b>${esc(h.host)}</b><small>${liveLabel}${h.cname ? " · CNAME " + esc(h.cname) : ""}${h.source_brute ? " · brute" : ""}${h.from_sub ? ` · <span class="subtag">${t("sub_tag")}</span>` : ""}</small></span>
       <span class="hips">${ipShort(h)}</span>
       <span class="hports">${portHtml}</span>
       <span class="hcount">${ports.length || ""}</span>

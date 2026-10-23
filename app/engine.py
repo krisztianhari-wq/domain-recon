@@ -241,20 +241,29 @@ class Engine:
             existing = {h["host"] for h in self.db.hosts(self.id)}
             all_cand: set[str] = set()
             wildcards: set[str] = set()
+            total_b = len(bases)
+            done_b = 0
+            bsem = asyncio.Semaphore(8)      # párhuzamos felderítés domainenként
             async with httpx.AsyncClient(headers={"User-Agent": UA}, follow_redirects=True) as client:
-                total_b = len(bases)
-                for i, base in enumerate(bases, 1):
+                async def enum_one(base: str):
+                    nonlocal done_b
                     self._check()
-                    self.db.set_sub_progress(self.id, "enumerate", i, total_b)
-                    try:
+                    try:   # a sources.gather forrásonként már időkorlátos (crt.sh ~40s), ezért itt nincs külön wait_for
                         (hosts, _hint), wc = await asyncio.gather(
                             sources.gather(base, client), enrich.detect_wildcard(base))
-                    except Exception:  # noqa: BLE001
-                        continue
-                    wildcards |= set(wc)
+                    except Exception:  # noqa: BLE001  – forráshiba: ezt a domaint kihagyjuk
+                        hosts, wc = [], []
+                    wildcards.update(wc)
                     for h in hosts:
                         if h == base or h.endswith("." + base):
                             all_cand.add(h)
+                    done_b += 1
+                    self.db.set_sub_progress(self.id, "enumerate", done_b, total_b)
+
+                async def guarded(base: str):
+                    async with bsem:
+                        await enum_one(base)
+                await asyncio.gather(*(guarded(b) for b in bases))
             room = max(0, self.max_hosts - len(existing))
             new = sorted(all_cand - existing)[:room]
             if len(all_cand - existing) > room:
@@ -262,13 +271,14 @@ class Engine:
             if wildcards:
                 self.db.set_wildcard(self.id, sorted(wildcards))
             self.db.set_sub_progress(self.id, "resolve", 0, len(new))
-            resolved = await self._resolve_all(new, wildcards)
+            resolved = await self._resolve_all(new, wildcards, extra={"from_sub": True})   # új hostok megjelölése
             await self._enrich(resolved)
             hosts_now = self.db.hosts(self.id)
             live = sum(1 for h in hosts_now if h.get("alive"))
             self.db.set_counts(self.id, len(hosts_now), live,
                                sum(len(h.get("ports", [])) for h in hosts_now))
-            self.db.set_sub_progress(self.id, "done", 1, 1)
+            added = len(resolved)                              # ennyi új host került ténylegesen a leltárhoz
+            self.db.set_sub_progress(self.id, "done", added, added)
             self.db.set_status(self.id, "done", sub_status="done")
         except Cancelled:
             self.db.set_status(self.id, "done", sub_status="canceled")
@@ -277,7 +287,7 @@ class Engine:
         finally:
             _ENGINES.pop(self.id, None)
 
-    async def _resolve_all(self, hosts: list[str], wildcard: set) -> dict[str, dict]:
+    async def _resolve_all(self, hosts: list[str], wildcard: set, extra: dict | None = None) -> dict[str, dict]:
         out: dict[str, dict] = {}
         total = len(hosts)
         sem = asyncio.Semaphore(32)
@@ -292,6 +302,8 @@ class Engine:
             if done % 5 == 0 or done == total:
                 self.db.set_progress(self.id, "resolve", done, total)
             if info:
+                if extra:
+                    info.update(extra)          # az info-ba kerül, hogy az _enrich visszaíráson is átmenjen
                 is_wild = bool(info["ips"]) and set(info["ips"]).issubset(wildcard) and h != self.domain
                 out[h] = info
                 rec = {**info, "alive": bool(info["ips"]), "wildcard": is_wild,
