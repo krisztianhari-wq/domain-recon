@@ -396,6 +396,22 @@ async def api_scan_cve(scan_id: str):
     return {"id": scan_id, "cve": "running"}
 
 
+@app.post("/api/scan/{scan_id}/subdomains")
+async def api_scan_subdomains(scan_id: str):
+    """Domain-leltár külön fázisa: a betöltött domainekre CT-alapú aldomén-felderítés."""
+    s = db.get_scan(scan_id)
+    if not s:
+        raise HTTPException(404, "Nincs ilyen vizsgálat.")
+    if (s.get("opts") or {}).get("target_kind") != "hostlist":
+        raise HTTPException(400, "Aldomén-felderítés csak domain-leltárra indítható.")
+    if s["status"] in ("queued", "running"):
+        raise HTTPException(409, "A leltár még fut.")
+    if s.get("sub_status") in ("queued", "running"):
+        raise HTTPException(409, "Az aldomén-felderítés már fut.")
+    engine.start_subdomains(db, scan_id)
+    return {"id": scan_id, "subdomains": "running"}
+
+
 @app.get("/api/scans")
 async def api_scans():
     return {"scans": db.recent_scans(40)}

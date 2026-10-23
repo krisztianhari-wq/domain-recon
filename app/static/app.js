@@ -130,6 +130,17 @@ async function startCve() {
   } catch (e) { alert(t("err_start")); $("#cvego").disabled = false; }
 }
 
+async function startSubdomains() {   // domain-leltár: aldomén-felderítés az összes betöltött domainre
+  if (!current) return;
+  $("#subgo").disabled = true;
+  try {
+    const r = await fetch(`/api/scan/${current}/subdomains`, {method: "POST"});
+    if (!r.ok) { const e = await r.json().catch(() => ({})); alert(e.detail || t("err_start")); $("#subgo").disabled = false; return; }
+    $("#subprog").classList.remove("hide");
+    startPoll();
+  } catch (e) { alert(t("err_start")); $("#subgo").disabled = false; }
+}
+
 function startPoll() { stopPoll(); tick(); poll = setInterval(tick, 1500); }
 function stopPoll() { if (poll) { clearInterval(poll); poll = null; } }
 
@@ -139,7 +150,7 @@ async function tick() {
   try { s = await (await fetch(`/api/scan/${current}`, {cache: "no-store"})).json(); }
   catch (e) { return; }
   scan = s; hosts = s.hosts || [];
-  renderProgress(s); renderActive(s); renderCve(s); renderStats(); renderPosture(s); renderHosts();
+  renderProgress(s); renderActive(s); renderCve(s); renderSubdomains(s); renderStats(); renderPosture(s); renderHosts();
   $("#md").href = `/report?id=${current}&lang=${LANG}`;   // nyomtatható PDF-jelentés (a UI nyelvén)
   $("#md").target = "_blank";
   $("#xlsx").href = `/api/export/${current}.xlsx`;
@@ -149,7 +160,8 @@ async function tick() {
   const passiveDone = ["done", "error", "canceled"].includes(s.status);
   const activeIdle = !["queued", "running"].includes(s.active_status);
   const cveIdle = !["queued", "running"].includes(s.cve_status);
-  if (passiveDone && activeIdle && cveIdle) { stopPoll(); $("#go").disabled = false; $("#activego").disabled = false; $("#cvego").disabled = false; loadHistory(); }
+  const subIdle = !["queued", "running"].includes(s.sub_status);
+  if (passiveDone && activeIdle && cveIdle && subIdle) { stopPoll(); $("#go").disabled = false; $("#activego").disabled = false; $("#cvego").disabled = false; $("#subgo").disabled = false; loadHistory(); }
 }
 
 function renderCve(s) {
@@ -165,6 +177,25 @@ function renderCve(s) {
     fill.style.width = pct + "%";
     $("#cstage").textContent = t("cve_scanning");
     $("#cprogtxt").textContent = `${s.cve_done || 0} / ${s.cve_total || 0}`;
+  }
+}
+
+function renderSubdomains(s) {   // csak domain-leltárnál (hostlist) látható, a passzív után
+  const isHostlist = s.opts && s.opts.target_kind === "hostlist";
+  const passiveDone = ["done", "error", "canceled"].includes(s.status);
+  $("#subcard").classList.toggle("hide", !isHostlist || !passiveDone || s.status === "error");
+  const running = ["queued", "running"].includes(s.sub_status);
+  $("#subgo").disabled = running;
+  $("#subgo").textContent = running ? t("sub_running") : (s.sub_status === "done" ? t("sub_done") + " · " + t("sub_go") : t("sub_go"));
+  $("#subprog").classList.toggle("hide", !running);
+  if (running) {
+    const fill = $("#sprogbar").querySelector("i");
+    const indet = s.sub_stage === "enumerate" || !s.sub_total;
+    $("#sprogbar").classList.toggle("indet", indet);
+    const pct = s.sub_total ? Math.round(s.sub_done / s.sub_total * 100) : 0;
+    fill.style.width = indet ? "35%" : pct + "%";
+    $("#sstage").textContent = t(s.sub_stage === "resolve" ? "sub_resolving" : "sub_enumerating");
+    $("#sprogtxt").textContent = `${s.sub_done || 0} / ${s.sub_total || 0}`;
   }
 }
 
@@ -490,6 +521,7 @@ $("#importbtn").addEventListener("click", () => $("#importfile").click());
 $("#importfile").addEventListener("change", onImportFile);
 $("#activego").addEventListener("click", startActive);
 $("#cvego").addEventListener("click", startCve);
+$("#subgo").addEventListener("click", startSubdomains);
 $("#filter").addEventListener("input", renderHosts);
 $("#cancel").addEventListener("click", async () => { if (current) await fetch(`/api/scan/${current}/cancel`, {method: "POST"}); });
 $("#newscan").addEventListener("click", () => { resetView(); try { history.replaceState(null, "", location.pathname); } catch (e) { /* no-op */ } $("#domain").focus(); });

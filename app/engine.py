@@ -230,6 +230,53 @@ class Engine:
         finally:
             _ENGINES.pop(self.id, None)
 
+    async def run_subdomains(self):
+        """Domain-leltár külön fázisa: a betöltött domainekre CT-alapú aldomén-felderítés (sources.gather) +
+        wildcard + feloldás + gazdagítás; az ÚJ hostok a leltárhoz adódnak. Cap: RECON_MAX_HOSTS."""
+        self.db.set_status(self.id, "done", sub_status="running")
+        self.db.set_sub_progress(self.id, "enumerate", 0, 0)
+        _ENGINES[self.id] = self
+        try:
+            bases = [b for b in self.target_hosts if b]
+            existing = {h["host"] for h in self.db.hosts(self.id)}
+            all_cand: set[str] = set()
+            wildcards: set[str] = set()
+            async with httpx.AsyncClient(headers={"User-Agent": UA}, follow_redirects=True) as client:
+                total_b = len(bases)
+                for i, base in enumerate(bases, 1):
+                    self._check()
+                    self.db.set_sub_progress(self.id, "enumerate", i, total_b)
+                    try:
+                        (hosts, _hint), wc = await asyncio.gather(
+                            sources.gather(base, client), enrich.detect_wildcard(base))
+                    except Exception:  # noqa: BLE001
+                        continue
+                    wildcards |= set(wc)
+                    for h in hosts:
+                        if h == base or h.endswith("." + base):
+                            all_cand.add(h)
+            room = max(0, self.max_hosts - len(existing))
+            new = sorted(all_cand - existing)[:room]
+            if len(all_cand - existing) > room:
+                self.db.set_note(self.id, f"{len(all_cand)} aldomén-jelölt → az első {room} új feldolgozva (RECON_MAX_HOSTS).")
+            if wildcards:
+                self.db.set_wildcard(self.id, sorted(wildcards))
+            self.db.set_sub_progress(self.id, "resolve", 0, len(new))
+            resolved = await self._resolve_all(new, wildcards)
+            await self._enrich(resolved)
+            hosts_now = self.db.hosts(self.id)
+            live = sum(1 for h in hosts_now if h.get("alive"))
+            self.db.set_counts(self.id, len(hosts_now), live,
+                               sum(len(h.get("ports", [])) for h in hosts_now))
+            self.db.set_sub_progress(self.id, "done", 1, 1)
+            self.db.set_status(self.id, "done", sub_status="done")
+        except Cancelled:
+            self.db.set_status(self.id, "done", sub_status="canceled")
+        except Exception as e:  # noqa: BLE001
+            self.db.set_status(self.id, "done", sub_status="error", error=f"{e.__class__.__name__}: {e}"[:300])
+        finally:
+            _ENGINES.pop(self.id, None)
+
     async def _resolve_all(self, hosts: list[str], wildcard: set) -> dict[str, dict]:
         out: dict[str, dict] = {}
         total = len(hosts)
@@ -548,6 +595,13 @@ def start_cve(db, scan_id: str) -> Engine:
     s = db.get_scan(scan_id)
     eng = Engine(db, scan_id, s["domain"], s.get("opts") or {})
     asyncio.create_task(eng.run_cve())
+    return eng
+
+
+def start_subdomains(db, scan_id: str) -> Engine:
+    s = db.get_scan(scan_id)
+    eng = Engine(db, scan_id, s["domain"], s.get("opts") or {})
+    asyncio.create_task(eng.run_subdomains())
     return eng
 
 
