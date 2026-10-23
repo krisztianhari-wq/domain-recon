@@ -51,11 +51,15 @@ $$("#ports button, #intensity button, #livefilter button").forEach(b => {
 // ---- passzív indítás ----
 async function startScan() {
   const domain = $("#domain").value.trim();
-  const useImport = importedIps && importedIps.length;
+  const useImport = hasImport();
   if (!domain && !useImport) { $("#domain").focus(); return; }
   bruteSuggested = false;
   $("#go").disabled = true;
-  const body = useImport ? {ips: importedIps, source: importedSource} : {domain};
+  const body = useImport
+    ? ((importedHosts && importedHosts.length)
+        ? {hosts: importedHosts, ips: importedIps || [], source: importedSource}
+        : {ips: importedIps, source: importedSource})
+    : {domain};
   try {
     const r = await fetch("/api/scan", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
     if (!r.ok) { const e = await r.json().catch(() => ({})); alert(e.detail || t("err_start")); $("#go").disabled = false; return; }
@@ -69,10 +73,11 @@ async function startScan() {
   } catch (e) { alert(t("err_start")); $("#go").disabled = false; }
 }
 
-// ---- IP-k betöltése XLS/CSV-ből ----
-let importedIps = null, importedSource = "";
+// ---- Domainek / IP-k betöltése XLS/CSV-ből ----
+let importedIps = null, importedHosts = null, importedSource = "";
+function hasImport() { return (importedHosts && importedHosts.length) || (importedIps && importedIps.length); }
 function clearImport() {
-  importedIps = null; importedSource = "";
+  importedIps = null; importedHosts = null; importedSource = "";
   const n = $("#importnote"); if (n) { n.classList.add("hide"); n.classList.remove("warn"); n.textContent = ""; }
 }
 async function onImportFile(ev) {
@@ -85,10 +90,15 @@ async function onImportFile(ev) {
     const r = await fetch("/api/import?name=" + encodeURIComponent(f.name), {method: "POST", body: f});
     const j = await r.json().catch(() => ({}));
     if (!r.ok) { note.classList.add("warn"); note.textContent = j.detail || t("import_err"); return; }
-    if (!j.count) { importedIps = null; note.classList.add("warn"); note.textContent = t("import_none"); return; }
-    importedIps = j.ips; importedSource = j.source || f.name;
+    const nd = j.domain_count || 0, ni = j.count || 0;
+    if (!nd && !ni) { clearImport(); note.classList.add("warn"); note.textContent = t("import_none"); return; }
+    importedHosts = j.domains || []; importedIps = j.ips || []; importedSource = j.source || f.name;
     $("#domain").value = "";
-    note.textContent = t("import_ok").replace("{n}", j.count).replace("{f}", importedSource)
+    // „N domain + M IP betöltve (fájl) — indítsd a leltárt." (a nulla tagot elhagyjuk)
+    const parts = [];
+    if (nd) parts.push(t("import_dom").replace("{n}", nd));
+    if (ni) parts.push(t("import_ip").replace("{n}", ni));
+    note.textContent = t("import_ready").replace("{what}", parts.join(" + ")).replace("{f}", importedSource)
       + (j.truncated ? " " + t("import_trunc") : "");
   } catch (e) { note.classList.add("warn"); note.textContent = t("import_err"); }
 }
@@ -414,11 +424,24 @@ function renderDetail(h) {
           <td class="m">${det.join(" · ") || "—"}</td><td class="m">${p.rtt_ms != null ? p.rtt_ms + " ms" : "—"}</td></tr>`;
       }).join("") + "</table></div>";
   }
+  // domain-leltár: domainenként külön teljes passzív (aldomén-enumeráció) indítható
+  const full = (!h.ip_target && /\./.test(h.host) && !/^\d+\.\d+\.\d+\.\d+$/.test(h.host))
+    ? `<div class="kv"><button class="btn" type="button" data-fullscan="${esc(h.host)}">${t("d_fullscan")}</button></div>` : "";
   return `<div class="detail">
     <div class="kv">${h.cname ? `<span data-tip="${esc(explainRec("cname"))}"><b>${t("d_cname")}:</b> ${esc(h.cname)}</span>` : ""}
       <span><b>${t("d_source")}:</b> ${h.source_brute ? "brute" : "passzív"}</span></div>
-    ${ipsTable}${tk}${cve}${vuln}${pq}${tech}${exp}${sans}${portsTbl}</div>`;
+    ${ipsTable}${tk}${cve}${vuln}${pq}${tech}${exp}${sans}${portsTbl}${full}</div>`;
 }
+
+async function startScanFor(host) {   // egy domain teljes passzív vizsgálata a leltárból
+  clearImport();
+  $("#domain").value = host;
+  await startScan();
+}
+document.addEventListener("click", ev => {
+  const b = ev.target.closest && ev.target.closest("[data-fullscan]");
+  if (b) { ev.preventDefault(); startScanFor(b.dataset.fullscan); }
+});
 
 // ---- előzmények ----
 async function loadHistory() {

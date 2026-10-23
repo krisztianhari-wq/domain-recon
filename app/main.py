@@ -232,10 +232,46 @@ def _csv_cells(raw: bytes):
             yield v
 
 
+def _domain_or_none(raw: str):
+    """Egy token normalizált domainje, vagy None (nem dob – a _norm_domain hibatűrő párja)."""
+    d = (raw or "").strip().lower().rstrip(".")[:253]
+    d = re.sub(r"^https?://", "", d).split("/")[0].split(":")[0]
+    try:
+        d = d.encode("idna").decode("ascii")
+    except Exception:  # noqa: BLE001
+        pass
+    return d if HOST_RE.match(d) else None
+
+
+def _parse_domains(cells) -> tuple[list[str], int]:
+    """Cellaszövegekből domainek (ami NEM IP/CIDR/tartomány) → egyedi, érvényes domain-lista (capelve)."""
+    seen: set[str] = set()
+    out: list[str] = []
+    raw_count = 0
+    for cell in cells:
+        for tok in re.split(r"[\s,;|]+", str(cell if cell is not None else "").strip()):
+            if not tok:
+                continue
+            try:
+                _expand_ips(tok)        # IP/CIDR/tartomány → nem domain (azt a _parse_targets kezeli)
+                continue
+            except (ValueError, Exception):  # noqa: BLE001
+                pass
+            d = _domain_or_none(tok)
+            if d:
+                raw_count += 1
+                if d not in seen:
+                    seen.add(d)
+                    out.append(d)
+                    if len(out) >= _MAX_TARGET_IPS:
+                        return out, raw_count
+    return out, raw_count
+
+
 @app.post("/api/import")
 async def api_import(request: Request):
-    """XLS(X)/CSV feltöltés nyers törzsként (?name=fájlnév) → a benne talált, szkennelhető IP-k listája.
-    Nem indít vizsgálatot; a kliens megerősítés után a /api/scan-t hívja az ips-listával."""
+    """XLS(X)/CSV feltöltés nyers törzsként (?name=fájlnév) → a benne talált, szkennelhető IP-k ÉS domainek listája.
+    Nem indít vizsgálatot; a kliens megerősítés után a /api/scan-t hívja (ips és/vagy hosts)."""
     name = (request.query_params.get("name") or "").lower()
     raw = await request.body()
     if len(raw) > IMPORT_MAX:
@@ -255,8 +291,10 @@ async def api_import(request: Request):
         raise HTTPException(400, "Nem olvasható fájl (XLSX vagy CSV kell).")
     allow_private = request.query_params.get("private") in ("1", "true", "yes")
     ips, raw_count = _parse_targets(cells, allow_private)
-    return {"ips": ips, "count": len(ips), "raw": raw_count,
-            "truncated": len(ips) >= _MAX_TARGET_IPS,
+    domains, dom_raw = _parse_domains(cells)
+    return {"ips": ips, "domains": domains,
+            "count": len(ips), "domain_count": len(domains), "raw": raw_count,
+            "truncated": len(ips) >= _MAX_TARGET_IPS or len(domains) >= _MAX_TARGET_IPS,
             "source": request.query_params.get("name") or ""}
 
 
@@ -294,22 +332,36 @@ async def api_scan(payload: dict = Body(...)):
                   if s["status"] in ("queued", "running") or s.get("active_status") in ("queued", "running"))
     if running >= MAX_SCANS:
         raise HTTPException(429, f"Már {running} vizsgálat fut. Várd meg, amíg befejeződik.")
-    imported = payload.get("ips")
-    if isinstance(imported, list) and imported:          # XLS/CSV-import: kész IP-lista
-        ips, _raw = _parse_targets(imported, bool(payload.get("allow_private")))
+    hosts_in = payload.get("hosts")
+    ips_in = payload.get("ips")
+    opts = _active_opts(payload)
+    src = str(payload.get("source") or "").strip()[:60]
+    if isinstance(hosts_in, list) and hosts_in:          # XLS/CSV-import: domain-lista (leltár; IP-k is mehetnek)
+        doms, _ = _parse_domains(hosts_in)
+        ips2, _ = _parse_targets(ips_in or [], bool(payload.get("allow_private")))
+        if not doms and not ips2:
+            raise HTTPException(400, "Nincs érvényes domain/IP a listában.")
+        total = len(doms) + len(ips2)
+        label = (f"{total} célpont" + (f" · {src}" if src else ""))[:120]
+        opts["target_kind"] = "hostlist"
+        opts["target_hosts"] = doms
+        opts["target_ips"] = ips2
+        opts["target_total"] = total
+    elif isinstance(ips_in, list) and ips_in:            # XLS/CSV-import: kész IP-lista
+        ips, _raw = _parse_targets(ips_in, bool(payload.get("allow_private")))
         if not ips:
             raise HTTPException(400, "Nincs érvényes (publikus) IP a listában.")
-        src = str(payload.get("source") or "").strip()[:60]
-        kind, total = "ip", len(ips)
+        total = len(ips)
         label = (f"{total} IP" + (f" · {src}" if src else ""))[:120]
-    else:
-        kind, label, ips, total = _norm_target(payload.get("domain", ""))
-    # a passzív fázis az alap; az aktív-opciókat eltároljuk a későbbi aktív indításhoz
-    opts = _active_opts(payload)
-    opts["target_kind"] = kind
-    if kind == "ip":
+        opts["target_kind"] = "ip"
         opts["target_ips"] = ips
         opts["target_total"] = total
+    else:
+        kind, label, ips, total = _norm_target(payload.get("domain", ""))
+        opts["target_kind"] = kind
+        if kind == "ip":
+            opts["target_ips"] = ips
+            opts["target_total"] = total
     scan_id = secrets.token_hex(8)
     db.create_scan(scan_id, label, opts)
     db.prune(KEEP)

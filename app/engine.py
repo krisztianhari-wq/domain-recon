@@ -97,8 +97,9 @@ class Engine:
         self.allow_private = bool(opts.get("allow_private"))
         self.do_ports = opts.get("scan_ports", True)
         self.brute = bool(opts.get("brute"))
-        self.target_kind = opts.get("target_kind", "domain")      # "domain" | "ip"
+        self.target_kind = opts.get("target_kind", "domain")      # "domain" | "ip" | "hostlist"
         self.target_ips = opts.get("target_ips") or []
+        self.target_hosts = opts.get("target_hosts") or []         # hostlist mód: megadott domainek (XLS/CSV-import)
         self.target_total = int(opts.get("target_total") or 0)
         self.max_hosts = int(os.getenv("RECON_MAX_HOSTS", "750"))
         self._gsem = asyncio.Semaphore(int(os.getenv("RECON_MAX_SOCKETS", "512")))
@@ -116,6 +117,9 @@ class Engine:
     async def run_passive(self):
         if self.target_kind == "ip":
             await self.run_passive_ips()
+            return
+        if self.target_kind == "hostlist":
+            await self.run_passive_hosts()
             return
         self.db.set_status(self.id, "running", stage="enumerate", active_status="none")
         _ENGINES[self.id] = self
@@ -179,6 +183,44 @@ class Engine:
                 self.db.upsert_host(self.id, ip, {**info, "alive": True, "wildcard": False, "ports": [], "scanned": False})
             self.db.set_counts(self.id, len(ips), len(ips), 0)
             await self._enrich(resolved)              # PTR + ASN, ips_info visszaírása
+            self.db.set_progress(self.id, "done", 1, 1)
+            self.db.set_status(self.id, "done")
+        except Cancelled:
+            self.db.set_status(self.id, "canceled", error="A felhasználó megszakította.")
+        except Exception as e:  # noqa: BLE001
+            self.db.set_status(self.id, "error", error=f"{e.__class__.__name__}: {e}"[:300])
+        finally:
+            _ENGINES.pop(self.id, None)
+
+    async def run_passive_hosts(self):
+        """Domain-lista passzív leltára (XLS/CSV-import): minden megadott domaint felold (A/AAAA, PTR/ASN),
+        él/nem él. Nincs CT-enumeráció / wildcard / posture / takeover / brute — az aktív és a CVE fázis
+        ráhúzható, teljes passzív pedig domainenként külön indítható. A megadott IP-ket is beveszi (ip-host)."""
+        self.db.set_status(self.id, "running", stage="resolve", active_status="none")
+        _ENGINES[self.id] = self
+        try:
+            hosts = self.target_hosts[:self.max_hosts]
+            ips = self.target_ips[:max(0, self.max_hosts - len(hosts))]
+            if self.target_total and self.target_total > len(hosts) + len(ips):
+                self.db.set_note(self.id, f"{self.target_total} célpont → az első {len(hosts) + len(ips)} "
+                                          f"feldolgozva (RECON_MAX_HOSTS).")
+            resolved: dict[str, dict] = {}
+            # megadott IP-k mint ip-hostok (mint az IP-leltárnál)
+            for ip in ips:
+                self._check()
+                pub = is_public(ip)
+                info = {"ips": [ip], "public_ips": [ip] if pub else [], "cname": None,
+                        "v4": [ip] if ":" not in ip else [], "v6": [ip] if ":" in ip else [],
+                        "ips_info": [], "ip_target": True}
+                resolved[ip] = info
+                self.db.upsert_host(self.id, ip, {**info, "alive": True, "wildcard": False, "ports": [], "scanned": False})
+            self.db.set_counts(self.id, len(hosts) + len(ips), len(ips), 0)
+            # domainek feloldása (üres wildcard-halmaz → nincs wildcard-jelölés)
+            res2 = await self._resolve_all(hosts, set())
+            resolved.update(res2)
+            await self._enrich(resolved)              # PTR + ASN, ips_info visszaírása
+            live = len(ips) + sum(1 for i in res2.values() if i["ips"])
+            self.db.set_counts(self.id, len(hosts) + len(ips), live, 0)
             self.db.set_progress(self.id, "done", 1, 1)
             self.db.set_status(self.id, "done")
         except Cancelled:
@@ -326,8 +368,8 @@ class Engine:
 
                 await asyncio.gather(*(one(h, d) for h, d in targets))
 
-                # opcionális DNS-brute (aktív: nagy volumen) – csak domain célpontnál értelmes
-                if self.brute and self.target_kind != "ip":
+                # opcionális DNS-brute (aktív: nagy volumen) – csak egyetlen domain célpontnál értelmes
+                if self.brute and self.target_kind == "domain":
                     await self._brute(client)
             self.db.set_active_progress(self.id, "done", 1, 1)
             self.db.set_status(self.id, "done", active_status="done")
