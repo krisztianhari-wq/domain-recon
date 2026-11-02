@@ -25,20 +25,19 @@ body{min-height:100vh}
 button{font:inherit;color:inherit}
 
 /* fejléc (keret nélküli: logó + név, nyelv- és témaváltó) */
-header.top{position:sticky;top:0;z-index:20;display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-2) var(--space-4);height:auto;min-height:56px;padding:var(--space-2) var(--space-8);
-  background:var(--color-surface);border-bottom:1px solid var(--color-border)}
-.rbrand{display:flex;align-items:center;gap:10px;font:700 16px var(--font);color:var(--color-text-primary);white-space:nowrap}
-.rbrand:hover{color:var(--color-text-primary)}
-.rbrand img{width:28px;height:28px;flex:none;border-radius:6px}
-.rbrand small{font:500 14px var(--font);color:var(--color-text-secondary)}
-.rbrand .mark{display:grid;place-items:center;color:var(--color-primary)}
-.status{margin-left:auto;display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-2);font-size:12px;color:var(--color-text-muted)}
-.icon-btn{display:inline-flex;align-items:center;justify-content:center;min-width:40px;height:40px;padding:0;border:1px solid var(--color-border-strong);background:var(--color-surface);border-radius:var(--radius-md);cursor:pointer;color:var(--color-text-secondary)}
-.icon-btn:hover{background:var(--color-surface-subtle);color:var(--color-text-primary)}
-.langs{display:inline-flex;gap:2px;padding:2px;background:var(--color-surface-subtle);border:1px solid var(--color-border);border-radius:var(--radius-md)}
-.langs button{border:0;background:transparent;border-radius:var(--radius-sm);padding:6px 12px;color:var(--color-text-secondary);font:500 13px var(--font);cursor:pointer;min-height:32px}
-.langs button:hover{background:var(--color-surface);color:var(--color-text-primary)}
-.langs button[aria-pressed="true"]{background:var(--color-surface);color:var(--color-text-primary);font-weight:600;box-shadow:var(--shadow-low)}
+/* Régi domain-recon fejléc visszaállítva (Krisz kérése): SADROBOT // RECON robot-ikonnal, áttetsző sáv. */
+header.top{position:sticky;top:0;z-index:20;display:flex;align-items:center;flex-wrap:wrap;gap:14px 22px;padding:12px 28px;
+  background:color-mix(in srgb,var(--bg) 86%,transparent);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:18px;letter-spacing:.05em;white-space:nowrap;color:var(--ink)}
+.brand small{color:var(--ink-3);font-weight:500;font-size:18px}
+.brand .mark{display:grid;place-items:center;color:var(--accent)}
+.status{margin-left:auto;display:flex;align-items:center;gap:10px;font:12.5px var(--mono);color:var(--ink-3);white-space:nowrap}
+.icon-btn{display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--line);background:var(--panel);border-radius:7px;min-width:32px;height:32px;cursor:pointer;color:var(--ink-2)}
+.icon-btn:hover{color:var(--accent);border-color:var(--accent)}
+.langs{display:inline-flex;gap:2px;padding:3px;background:var(--panel);border:1px solid var(--line);border-radius:8px}
+.langs button{font:500 11px var(--mono);letter-spacing:.04em;padding:5px 8px;border:0;border-radius:5px;background:transparent;color:var(--ink-3);cursor:pointer}
+.langs button:hover{color:var(--ink)}
+.langs button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent)}
 .dot{width:8px;height:8px;border-radius:50%;background:currentColor;flex:none}
 
 /* oldal */
@@ -193,7 +192,6 @@ th[data-tip],td[data-tip]{text-decoration:underline dotted var(--color-text-mute
 @media (max-width:767px){
   header.top{padding:var(--space-2) var(--space-4);gap:var(--space-2)}
   main{padding:var(--space-4) var(--space-4) var(--space-6)}
-  .rbrand small{display:none}
   .icon-btn,.langs button{min-height:44px}.icon-btn{min-width:44px;height:44px}
   .searchbar>.btn,.searchbar>input{flex:1 1 100%}
   .customports{width:100%}
@@ -201,5 +199,5 @@ th[data-tip],td[data-tip]{text-decoration:underline dotted var(--color-text-mute
   .toolbar .actions .btn{flex:1}
 }
 @media (max-width:360px){
-  .rbrand span{font-size:15px}
+  .brand{font-size:16px}.brand small{font-size:16px}
 }
