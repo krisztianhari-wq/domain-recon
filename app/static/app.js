@@ -306,18 +306,18 @@ function renderStats() {
   const pqAssessed = hosts.filter(h => h.pq && h.pq.kex);
   const pqSafe = pqAssessed.filter(h => h.pq.kex.status === "pq").length;
   $("#stats").classList.remove("hide");
-  let html = `
-    <div class="stat accent" data-f="all"><b>${t("m_hosts")}</b><span>${hosts.length}</span></div>
-    <div class="stat good" data-f="live"><b>${t("m_live")}</b><span>${live}</span></div>
-    <div class="stat ${tk ? "bad" : ""}" data-f="takeover" data-tip="${esc(explainRec("takeover"))}"><b>${t("m_takeover")}</b><span>${tk}</span></div>
-    <div class="stat ${exposed ? "warn" : ""}" data-f="exposed"><b>${t("m_exposed")}</b><span>${exposed}</span></div>
-    <div class="stat" data-f="ports"><b>${t("m_ports")}</b><span>${openPorts}</span></div>`;
+  const kp = (cls, f, tip, label, val) => `<div class="kpi stat ${cls}" data-f="${f}"${tip ? ` data-tip="${esc(tip)}"` : ""}><div class="v">${val}</div><div class="l">${label}</div></div>`;
+  let html = kp("", "all", "", t("m_hosts"), hosts.length)
+    + kp("ok", "live", "", t("m_live"), live)
+    + kp(tk ? "bad" : "", "takeover", explainRec("takeover"), t("m_takeover"), tk)
+    + kp(exposed ? "warn" : "", "exposed", "", t("m_exposed"), exposed)
+    + kp("", "ports", "", t("m_ports"), openPorts);
   if (pqAssessed.length) {
-    const cls = pqSafe === pqAssessed.length ? "good" : pqSafe ? "warn" : "bad";
-    html += `<div class="stat ${cls}" data-f="pq" data-tip="${esc(explainRec("pq"))}"><b>${t("m_pq")}</b><span>${pqSafe}/${pqAssessed.length}</span></div>`;
+    const cls = pqSafe === pqAssessed.length ? "ok" : pqSafe ? "warn" : "bad";
+    html += kp(cls, "pq", explainRec("pq"), t("m_pq"), `${pqSafe}/${pqAssessed.length}`);
   }
   const cveHosts = hosts.filter(h => h.cve && h.cve.length).length;
-  if (cveHosts) html += `<div class="stat bad" data-f="cve" data-tip="${esc(explainRec("cve"))}"><b>${t("m_cve")}</b><span>${cveHosts}</span></div>`;
+  if (cveHosts) html += kp("bad", "cve", explainRec("cve"), t("m_cve"), cveHosts);
   $("#stats").innerHTML = html;
 }
 

@@ -7,30 +7,31 @@
 <meta name="referrer" content="no-referrer">
 <title>domain-recon · sadrobot</title>
 <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/modern.css?v=__VER__">
 <link rel="stylesheet" href="/static/app.css?v=__VER__">
 <script src="/static/theme.js?v=__VER__"></script>
 </head>
 <body>
 <header class="top">
-  <span class="brand"><span class="mark"><svg width="26" height="26" viewBox="0 0 26 26" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="4" y="7" width="18" height="14" rx="4"></rect><circle cx="10" cy="14" r="1.6" fill="currentColor"></circle><circle cx="16" cy="14" r="1.6" fill="currentColor"></circle><path d="M13 7V3"></path></svg></span>SADROBOT <small>// RECON</small></span>
+  <a class="rbrand" href="https://sadrobot.eu" rel="noopener"><img src="/static/sadrobot-icon.png" alt="" width="28" height="28"><span>sadrobot</span><small>domain-recon</small></a>
   <div class="status">
-    <div class="langs" role="group"><button type="button" data-lang="hu">HU</button><button type="button" data-lang="en">EN</button></div>
-    <button class="icon-btn" id="theme" type="button" aria-label="theme">◐</button>
+    <div class="langs seg" role="group"><button type="button" data-lang="hu">HU</button><button type="button" data-lang="en">EN</button></div>
+    <button class="icon-btn btn icon" id="theme" type="button" aria-label="theme">◐</button>
   </div>
 </header>
 
-<main>
+<main class="content">
   <div>
-    <p class="eyebrow" data-i18n="eyebrow">Domain-feltérképezés</p>
+    <p class="eyebrow meta" data-i18n="eyebrow">Domain-feltérképezés</p>
     <h1 data-i18n="h1">Domain-recon</h1>
     <p class="sub" data-i18n="lead">Írj be egy domaint…</p>
   </div>
 
   <section class="card search">
     <div class="searchbar">
-      <input type="text" id="domain" autocomplete="off" autocapitalize="off" spellcheck="false" data-i18n-ph="ph_domain" placeholder="example.com">
+      <input type="text" class="input" id="domain" autocomplete="off" autocapitalize="off" spellcheck="false" data-i18n-ph="ph_domain" placeholder="example.com">
       <button class="btn" id="importbtn" type="button" data-i18n="import_btn">IP-k XLS/CSV-ből</button>
-      <button class="go" id="go" type="button" data-i18n="go">Passzív feltérképezés</button>
+      <button class="btn primary go" id="go" type="button" data-i18n="go">Passzív feltérképezés</button>
     </div>
     <input type="file" id="importfile" accept=".xlsx,.xlsm,.csv,.txt,.tsv" class="hide">
     <p class="note hide" id="importnote"></p>
@@ -41,9 +42,9 @@
     <details id="orgipwrap">
       <summary><b data-i18n="org_title">Cég → IP-tartományok (RIR/BGP)</b></summary>
       <p class="sub" data-i18n="org_help">Nyilvános forrásokból: add meg a cég nevét, egy ASN-t (AS…) vagy egy domaint. Nem kihasználás.</p>
-      <div class="searchbar" style="margin-top:10px">
-        <input type="text" id="orgq" autocomplete="off" spellcheck="false" data-i18n-ph="org_ph" placeholder="pl. Yettel Hungary, AS213155, yettel.hu">
-        <button class="go" id="orgsearch" type="button" data-i18n="org_go">Keresés</button>
+      <div class="searchbar mt">
+        <input type="text" class="input" id="orgq" autocomplete="off" spellcheck="false" data-i18n-ph="org_ph" placeholder="pl. Yettel Hungary, AS213155, yettel.hu">
+        <button class="btn primary go" id="orgsearch" type="button" data-i18n="org_go">Keresés</button>
       </div>
       <p class="note hide" id="orgnote"></p>
       <div id="orgresult" class="hide"></div>
@@ -61,7 +62,7 @@
     <div class="progbar" id="progbar"><i></i></div>
   </section>
 
-  <section class="stats hide" id="stats"></section>
+  <section class="kpis hide" id="stats"></section>
 
   <section class="card hide" id="posture">
     <h2 data-i18n="posture_title">DNS / e-mail posture</h2>
@@ -72,10 +73,10 @@
   <section class="card hide" id="activecard">
     <div class="row">
       <div><h2 data-i18n="active_title">Aktív vizsgálat</h2><p class="sub" data-i18n="active_help">A felderített hostok megérintése…</p></div>
-      <button class="go" id="activego" type="button" data-i18n="active_go">Aktív vizsgálat indítása</button>
+      <button class="btn primary go" id="activego" type="button" data-i18n="active_go">Aktív vizsgálat indítása</button>
     </div>
     <div class="opts">
-      <div class="opt">
+      <div class="opt field">
         <label data-i18n="o_ports">Portok</label>
         <div class="seg" id="ports" role="group">
           <button type="button" data-v="service" class="on" data-i18n="p_service">Szolgáltatás</button>
@@ -84,11 +85,11 @@
           <button type="button" data-v="custom" data-i18n="p_custom">Egyedi</button>
         </div>
       </div>
-      <div class="opt hide" id="customwrap">
+      <div class="opt field hide" id="customwrap">
         <label data-i18n="p_custom">Egyedi</label>
-        <input type="text" id="customports" class="customports" data-i18n-ph="ph_custom" placeholder="22,80,443,8000-8100">
+        <input type="text" id="customports" class="customports input" data-i18n-ph="ph_custom" placeholder="22,80,443,8000-8100">
       </div>
-      <div class="opt">
+      <div class="opt field">
         <label data-i18n="o_intensity">Intenzitás</label>
         <div class="seg" id="intensity" role="group">
           <button type="button" data-v="polite" class="on" data-i18n="i_polite">Kíméletes</button>
@@ -96,7 +97,7 @@
           <button type="button" data-v="aggressive" data-i18n="i_aggressive">Agresszív</button>
         </div>
       </div>
-      <div class="opt">
+      <div class="opt field">
         <label data-i18n="o_extra">Egyéb</label>
         <div class="checks">
           <label class="chk"><input type="checkbox" id="brute"><span data-i18n="x_brute">DNS-brute</span></label>
@@ -114,7 +115,7 @@
   <section class="card hide" id="cvecard">
     <div class="row">
       <div><h2 data-i18n="cve_title">Ismert sebezhetőségek (CVE)</h2><p class="sub" data-i18n="cve_help">Az élő hostok fejlécéből termék+verzió → ismert kritikus CVE (verzió alapján, nem kihasználás).</p></div>
-      <button class="go" id="cvego" type="button" data-i18n="cve_go">CVE-vizsgálat indítása</button>
+      <button class="btn primary go" id="cvego" type="button" data-i18n="cve_go">CVE-vizsgálat indítása</button>
     </div>
     <details class="cveinfo">
       <summary data-i18n="cve_info_sum">Mit néz a vizsgálat?</summary>
@@ -140,7 +141,7 @@
   <section class="card hide" id="subcard">
     <div class="row">
       <div><h2 data-i18n="sub_title">Aldomén-felderítés</h2><p class="sub" data-i18n="sub_help">A betöltött domainekre CT-alapú aldomén-felderítés; az új hostok a leltárhoz adódnak (passzív).</p></div>
-      <button class="go" id="subgo" type="button" data-i18n="sub_go">Aldomén-felderítés indítása</button>
+      <button class="btn primary go" id="subgo" type="button" data-i18n="sub_go">Aldomén-felderítés indítása</button>
     </div>
     <div class="prog hide" id="subprog">
       <div class="progmeta"><span><span class="stage-chip" id="sstage">–</span> · <span id="sprogtxt">0 / 0</span></span></div>
@@ -150,7 +151,7 @@
 
   <section class="hide" id="results">
     <div class="toolbar">
-      <input type="text" id="filter" class="filter" data-i18n-ph="filter_ph" placeholder="Szűrés…">
+      <input type="text" id="filter" class="filter input" data-i18n-ph="filter_ph" placeholder="Szűrés…">
       <div class="pills" id="livefilter" role="group">
         <button type="button" data-v="all" class="on" data-i18n="f_all">Mind</button>
         <button type="button" data-v="live" data-i18n="f_live">Élő</button>
@@ -160,7 +161,7 @@
         <button type="button" data-v="sub" data-i18n="f_sub">Aldomén</button>
         <button type="button" data-v="dead" data-i18n="f_dead">Nem élő</button>
       </div>
-      <div style="display:flex;gap:8px">
+      <div class="actions">
         <a class="btn" id="graphlink" href="#" data-i18n="col_graph">Gráf</a>
         <a class="btn" id="md" href="#" data-i18n="col_md">Jelentés</a>
         <a class="btn" id="xlsx" href="#" data-i18n="col_xlsx">XLSX</a>
@@ -178,12 +179,13 @@
   </section>
 </main>
 
-<footer>
-  <span data-i18n="footer_a">sadrobot · domain-recon</span>
-  <span id="ver"></span>
+<footer class="footer">
+  <span><span data-i18n="footer_a">sadrobot · domain-recon</span> · <span id="ver"></span></span>
   <span data-i18n="footer_b">Csak engedélyezett célpontra</span>
+  <span><img src="/static/sadrobot-icon.png" alt="">© <a href="https://sadrobot.eu" rel="noopener">sadrobot</a></span>
 </footer>
 
+<script src="/static/modern.js?v=__VER__"></script>
 <script src="/static/i18n.js?v=__VER__"></script>
 <script src="/static/app.js?v=__VER__"></script>
 </body>
