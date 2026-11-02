@@ -103,6 +103,53 @@ async function onImportFile(ev) {
   } catch (e) { note.classList.add("warn"); note.textContent = t("import_err"); }
 }
 
+// ---- Cég → IP-tartományok (RIR/BGP) ----
+async function orgSearch() {
+  const q = $("#orgq").value.trim();
+  if (!q) { $("#orgq").focus(); return; }
+  const note = $("#orgnote"), res = $("#orgresult");
+  $("#orgsearch").disabled = true;
+  note.classList.remove("hide", "warn"); note.textContent = t("org_loading");
+  res.classList.add("hide"); res.innerHTML = "";
+  try {
+    const d = await (await fetch("/api/orgip?q=" + encodeURIComponent(q))).json();
+    if (d.detail) { note.classList.add("warn"); note.textContent = d.detail; return; }
+    note.classList.add("hide");
+    renderOrgResult(d);
+  } catch (e) { note.classList.add("warn"); note.textContent = t("org_err"); }
+  finally { $("#orgsearch").disabled = false; }
+}
+
+function renderOrgResult(d) {
+  const res = $("#orgresult");
+  const pfx = d.prefixes || [];
+  const orgs = (d.orgs || []).map(o => `<span class="tag">${esc(o.handle)}${o.name ? " · " + esc(o.name) : ""} (${esc(o.source)})</span>`).join(" ");
+  const asns = (d.asns || []).map(a => `<span class="tag">${esc(a.asn)}${a.name ? " " + esc(a.name) : ""}</span>`).join(" ");
+  res.classList.remove("hide");
+  if (!pfx.length) { res.innerHTML = `${orgs || asns ? `<div class="kv">${orgs} ${asns}</div>` : ""}<p class="empty">${t("org_none")}</p>`; return; }
+  const rows = pfx.map(p => `<label class="orgrow"><input type="checkbox" class="orgpfx" value="${esc(p.prefix)}" checked>
+    <span class="m">${esc(p.prefix)}</span><span class="hd">${esc(p.netname || p.source || "")}${p.cc ? " · " + esc(p.cc) : ""}</span></label>`).join("");
+  const notes = (d.notes || []).map(n => `<p class="note">${esc(n)}</p>`).join("");
+  res.innerHTML = `
+    ${orgs ? `<div class="kv"><b>${t("org_orgs")}:</b> ${orgs}</div>` : ""}
+    ${asns ? `<div class="kv"><b>ASN:</b> ${asns}</div>` : ""}
+    <div class="kv" style="align-items:center;gap:8px;flex-wrap:wrap"><b>${t("org_prefixes")} (${pfx.length}):</b>
+      <button class="btn" id="orgall" type="button">${t("org_all")}</button>
+      <button class="go" id="orgscan" type="button">${t("org_scan")}</button></div>
+    <div class="orglist">${rows}</div>${notes}`;
+  $("#orgall").addEventListener("click", () => { const cbs = $$(".orgpfx"); const on = cbs.every(c => c.checked); cbs.forEach(c => c.checked = !on); });
+  $("#orgscan").addEventListener("click", orgScan);
+}
+
+function orgScan() {
+  const sel = $$(".orgpfx").filter(c => c.checked).map(c => c.value);
+  if (!sel.length) { alert(t("org_pick")); return; }
+  importedHosts = null; importedIps = sel;
+  importedSource = ($("#orgq").value.trim() + " (RIR)").slice(0, 60);
+  const w = $("#orgipwrap"); if (w) w.open = false;
+  startScan();                       // {ips: prefixek, source} → IP-leltár (CIDR→IP)
+}
+
 // ---- aktív indítás ----
 async function startActive() {
   if (!current) return;
@@ -521,6 +568,8 @@ $("#domain").addEventListener("keydown", e => { if (e.key === "Enter") startScan
 $("#domain").addEventListener("input", () => { if (importedIps) clearImport(); });
 $("#importbtn").addEventListener("click", () => $("#importfile").click());
 $("#importfile").addEventListener("change", onImportFile);
+$("#orgsearch").addEventListener("click", orgSearch);
+$("#orgq").addEventListener("keydown", e => { if (e.key === "Enter") orgSearch(); });
 $("#activego").addEventListener("click", startActive);
 $("#cvego").addEventListener("click", startCve);
 $("#subgo").addEventListener("click", startSubdomains);

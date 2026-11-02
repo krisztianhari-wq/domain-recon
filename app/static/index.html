@@ -37,6 +37,19 @@
     <p class="note warn" data-i18n="authz">Csak engedélyezett célpontot vizsgálj.</p>
   </section>
 
+  <section class="card">
+    <details id="orgipwrap">
+      <summary><b data-i18n="org_title">Cég → IP-tartományok (RIR/BGP)</b></summary>
+      <p class="sub" data-i18n="org_help">Nyilvános forrásokból: add meg a cég nevét, egy ASN-t (AS…) vagy egy domaint. Nem kihasználás.</p>
+      <div class="searchbar" style="margin-top:10px">
+        <input type="text" id="orgq" autocomplete="off" spellcheck="false" data-i18n-ph="org_ph" placeholder="pl. Yettel Hungary, AS213155, yettel.hu">
+        <button class="go" id="orgsearch" type="button" data-i18n="org_go">Keresés</button>
+      </div>
+      <p class="note hide" id="orgnote"></p>
+      <div id="orgresult" class="hide"></div>
+    </details>
+  </section>
+
   <section class="card prog hide" id="progcard">
     <div class="row">
       <div class="progmeta" style="flex:1">

@@ -109,6 +109,12 @@ td.m{font-family:var(--mono);color:var(--ink-2);font-size:12px;overflow-wrap:any
 .tag{display:inline-block;font:500 11px var(--mono);padding:2px 8px;border-radius:5px;background:var(--panel-2);color:var(--ink-3);border:1px solid var(--line)}
 .tag.san{background:var(--accent-soft);color:var(--accent);border-color:color-mix(in srgb,var(--accent) 35%,transparent)}
 .subtag{display:inline-block;padding:0 6px;border-radius:999px;background:var(--accent-soft);color:var(--accent);font:600 10px var(--mono);letter-spacing:.03em}
+.orglist{max-height:320px;overflow:auto;margin-top:8px;border:1px solid var(--line);border-radius:8px}
+.orgrow{display:flex;align-items:center;gap:10px;padding:6px 10px;border-bottom:1px solid var(--line-2);font-size:13px;cursor:pointer}
+.orgrow:last-child{border-bottom:none}
+.orgrow .m{font-family:var(--mono);min-width:150px}
+.orgrow .hd{color:var(--ink-3);font-size:12px}
+#orgipwrap>summary{cursor:pointer;font-size:15px}
 
 /* előzmények */
 .hist{display:flex;flex-direction:column}

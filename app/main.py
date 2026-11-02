@@ -21,7 +21,7 @@ from fastapi import Body, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import __version__, engine, report
+from . import __version__, engine, orgip, report
 from .db import DB
 from .ports import resolve_profile
 
@@ -266,6 +266,19 @@ def _parse_domains(cells) -> tuple[list[str], int]:
                     if len(out) >= _MAX_TARGET_IPS:
                         return out, raw_count
     return out, raw_count
+
+
+@app.get("/api/orgip")
+async def api_orgip(request: Request):
+    """Cég / ASN / domain → a céghez tartozó IP-tartományok nyilvános RIR/BGP forrásokból (review-hoz)."""
+    q = (request.query_params.get("q") or "").strip()[:120]
+    if not q:
+        raise HTTPException(400, "Adj meg céget, ASN-t vagy domaint.")
+    rirs = [x.strip() for x in (request.query_params.get("rirs") or "ripe,arin,peeringdb").split(",") if x.strip()]
+    try:
+        return await asyncio.wait_for(orgip.discover(q, rirs), timeout=50)
+    except asyncio.TimeoutError:
+        raise HTTPException(504, "A forráslekérdezés időtúllépés. Próbáld újra, vagy adj meg ASN-t közvetlenül.")
 
 
 @app.post("/api/import")
