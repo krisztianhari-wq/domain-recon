@@ -116,6 +116,23 @@ async def asn_holder(client: httpx.AsyncClient, asn: str) -> str:
         return ""
 
 
+async def asn_org(client: httpx.AsyncClient, asn: str) -> str | None:
+    """ASN → a birtokló RIPE org-handle (az aut-num `org:` mezője). Így egy BGP-ből felbukkant ASN-ből
+    (pl. domain-seed → infra-cég ASN-je) kibontható a cég teljes RIPE-inetnum-listája."""
+    num = re.sub(r"(?i)^as", "", str(asn)).strip()
+    if not num.isdigit():
+        return None
+    try:
+        r = await client.get(f"https://rest.db.ripe.net/ripe/aut-num/AS{num}.json")
+        for o in r.json().get("objects", {}).get("object", []):
+            org = _attrs(o).get("org")
+            if org:
+                return org
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
 # ------------------------------------------------ ARIN ------------------------------------------------
 async def arin_orgs(client: httpx.AsyncClient, name: str) -> list[dict]:
     try:
@@ -190,69 +207,79 @@ def _looks_domain(q: str) -> bool:
 
 
 async def discover(query: str, rirs: list[str] | None = None) -> dict:
-    """Egységes belépő: a `query` lehet ASN, domain vagy cégnév.
-    Visszaad: {query, orgs, asns, prefixes, note}. A prefixek forrásonként jelölve (visszaigazoláshoz)."""
+    """Egységes belépő. A `query` TÖBB seedet is tartalmazhat (vesszővel/pontosvesszővel/sortöréssel),
+    és minden seed lehet ASN, domain vagy cégnév – a legteljesebb lefedettséghez érdemes a cégnevet ÉS a
+    fő domaint (és ismert ASN-t) együtt megadni, mert az infrastruktúra gyakran külön cég/ASN alatt van
+    (pl. Yettel → CETIN / AS8448). Visszaad: {query, orgs, asns, prefixes, notes}, forrás-jelöléssel."""
     q = (query or "").strip()
     rirs = rirs or ["ripe", "arin", "peeringdb"]
+    seeds = [s.strip() for s in re.split(r"[,;\n]+", q) if s.strip()][:10] or [q]
     orgs: list[dict] = []
     asns: dict[str, dict] = {}        # asn -> {asn, name, source}
     prefixes: list[dict] = []
     notes: list[str] = []
+    done_handles: set[str] = set()
 
     def add_asn(a: dict):
         key = re.sub(r"(?i)^as", "AS", a["asn"])
         asns.setdefault(key, {"asn": key, "name": a.get("name", ""), "source": a.get("source", "")})
 
-    async with _client() as client:
-        asn_num = _looks_asn(q)
-        if asn_num:                                   # közvetlen ASN → globális prefixek
-            holder = await asn_holder(client, asn_num)
-            add_asn({"asn": f"AS{asn_num}", "name": holder, "source": "megadott ASN"})
-        elif _looks_domain(q):                        # domain-seed
-            for a in await domain_seed_asns(client, q):
-                add_asn(a)
-            notes.append("Domain-seed: a feloldott IP-k ASN-je – lehet ISP/CDN is, ellenőrizd a holder nevét.")
-        else:                                         # cégnév → org-keresés a RIR-ekben
-            tasks = []
-            if "ripe" in rirs:
-                tasks.append(("ripe_org", ripe_orgs(client, q)))
-            if "arin" in rirs:
-                tasks.append(("arin_org", arin_orgs(client, q)))
-            if "peeringdb" in rirs:
-                tasks.append(("pdb", peeringdb_asns(client, q)))
-            results = await asyncio.gather(*(t[1] for t in tasks), return_exceptions=True)
-            for (kind, _), res in zip(tasks, results):
-                if isinstance(res, Exception):
-                    continue
-                if kind == "ripe_org":
-                    orgs += res
-                elif kind == "arin_org":
-                    orgs += res
-                elif kind == "pdb":
-                    for a in res:
-                        add_asn(a)
-            # RIPE org-handle-ök erőforrásai
-            ripe_handles = [o["handle"] for o in orgs if o["source"] == "RIPE"][:6]
-            for res in await asyncio.gather(*(ripe_resources(client, h) for h in ripe_handles),
-                                            return_exceptions=True):
-                if isinstance(res, Exception):
-                    continue
-                prefixes += res["prefixes"]
-                for a in res["asns"]:
-                    add_asn(a)
-            # ARIN org-handle-ök hálózatai
-            arin_handles = [o["handle"] for o in orgs if o["source"] == "ARIN"][:6]
-            for res in await asyncio.gather(*(arin_nets(client, h) for h in arin_handles),
-                                            return_exceptions=True):
-                if not isinstance(res, Exception):
-                    prefixes += res
+    async def pull_ripe_handle(h: str, src_label: str):
+        if not h or h in done_handles:
+            return
+        done_handles.add(h)
+        orgs.append({"handle": h, "name": "", "source": src_label})
+        res = await ripe_resources(client, h)
+        prefixes.extend(res["prefixes"])
+        for a in res["asns"]:
+            add_asn(a)
 
-        # minden összegyűjtött ASN → BGP-prefixek (globális)
-        for res in await asyncio.gather(*(announced_prefixes(client, a) for a in list(asns)),
-                                        return_exceptions=True):
+    async with _client() as client:
+        # 1) seedenként: ASN / domain / cégnév
+        for s in seeds:
+            asn_num = _looks_asn(s)
+            if asn_num:
+                add_asn({"asn": f"AS{asn_num}", "name": await asn_holder(client, asn_num), "source": "megadott ASN"})
+            elif _looks_domain(s):
+                for a in await domain_seed_asns(client, s):
+                    add_asn(a)
+            else:
+                tasks = []
+                if "ripe" in rirs:
+                    tasks.append(("ripe_org", ripe_orgs(client, s)))
+                if "arin" in rirs:
+                    tasks.append(("arin_org", arin_orgs(client, s)))
+                if "peeringdb" in rirs:
+                    tasks.append(("pdb", peeringdb_asns(client, s)))
+                for (kind, _), res in zip(tasks, await asyncio.gather(*(t[1] for t in tasks), return_exceptions=True)):
+                    if isinstance(res, Exception):
+                        continue
+                    if kind in ("ripe_org", "arin_org"):
+                        orgs += res
+                    elif kind == "pdb":
+                        for a in res:
+                            add_asn(a)
+        if any(_looks_domain(s) for s in seeds):
+            notes.append("Domain-seed: a feloldott IP-k ASN-je – lehet ISP/CDN/infra-cég is, ellenőrizd a holder nevét.")
+
+        # 2) RIPE org-handle-ök erőforrásai (a cégnév-keresésből)
+        for h in [o["handle"] for o in list(orgs) if o["source"] == "RIPE"][:6]:
+            await pull_ripe_handle(h, "RIPE")
+        # 3) ARIN org-handle-ök hálózatai
+        arin_handles = [o["handle"] for o in orgs if o["source"] == "ARIN"][:6]
+        for res in await asyncio.gather(*(arin_nets(client, h) for h in arin_handles), return_exceptions=True):
             if not isinstance(res, Exception):
                 prefixes += res
-        # ASN holder-nevek kitöltése (ami még üres)
+        # 4) ASN → birtokló RIPE org → annak inetnumai (a domain-seed/BGP ASN-ekből, pl. AS8448→CETIN)
+        for a in list(asns):
+            org = await asn_org(client, a)
+            if org:
+                await pull_ripe_handle(org, "RIPE (ASN→org)")
+        # 5) minden összegyűjtött ASN → BGP-prefixek (globális, a no-org tartományokat is lefedi)
+        for res in await asyncio.gather(*(announced_prefixes(client, a) for a in list(asns)), return_exceptions=True):
+            if not isinstance(res, Exception):
+                prefixes += res
+        # 6) ASN holder-nevek kitöltése
         for a in asns.values():
             if not a.get("name"):
                 a["name"] = await asn_holder(client, a["asn"])
