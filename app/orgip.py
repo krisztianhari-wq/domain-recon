@@ -5,7 +5,7 @@ AI nélkül, kizárólag olvasó HTTP GET lekérdezésekből:
   - RIPEstat (stat.ripe.net): ASN → BGP-ben meghirdetett prefixek (GLOBÁLIS, bármely RIR), AS-holder.
   - ARIN REST (whois.arin.net/rest): org-keresés + hálózatok (ARIN-régió) – best-effort.
   - PeeringDB (peeringdb.com/api): org → hálózatok/ASN-ek (globális, peering-cégek) – best-effort.
-  - domain-seed: a megadott domain feloldása → IP → ASN (Team Cymru, az enrich modulból) → a cég ASN-je.
+  - domain-seed: a megadott domain feloldása → IP → ASN (RIPEstat network-info).
 
 Minden forrás hibatűrő és időkorlátos; ha egy forrás hibázik, csendben kimarad. A WHOIS elavulhat, ezért a
 találatok netname/descr/ország mezővel jönnek, hogy a felhasználó visszaigazolhassa. Nem kihasználás.
@@ -18,9 +18,7 @@ import re
 
 import httpx
 
-from . import enrich
-
-UA = "domain-recon/0.9 (+sadrobot; org IP discovery)"
+UA = "sadrobot org-ip discovery"
 _TIMEOUT = 25
 _MAX_PREFIXES = 2000          # védelmi felső korlát a visszaadott prefixekre
 
@@ -177,7 +175,8 @@ async def peeringdb_asns(client: httpx.AsyncClient, name: str) -> list[dict]:
 
 # --------------------------------------------- domain-seed ---------------------------------------------
 async def domain_seed_asns(client: httpx.AsyncClient, domain: str) -> list[dict]:
-    """A megadott domain feloldása → IP → ASN (Team Cymru). A cég saját ASN-jének kiindulópontja lehet."""
+    """A megadott domain feloldása → IP → ASN (RIPEstat network-info, önálló – nincs külső függőség).
+    A cég infrastruktúra-ASN-jének kiindulópontja (pl. yettel.hu → AS8448/CETIN)."""
     import socket
     try:
         infos = await asyncio.get_running_loop().getaddrinfo(domain, None, type=socket.SOCK_STREAM)
@@ -187,13 +186,14 @@ async def domain_seed_asns(client: httpx.AsyncClient, domain: str) -> list[dict]
     out, seen = [], set()
     for ip in ips[:4]:
         try:
-            info = await enrich.asn_lookup(ip)
+            r = await client.get(f"https://stat.ripe.net/data/network-info/data.json?resource={ip}")
+            data = r.json().get("data", {})
         except Exception:  # noqa: BLE001
-            info = None
-        asn = (info or {}).get("asn")
-        if asn and asn not in seen:
-            seen.add(asn)
-            out.append({"asn": f"AS{asn}", "name": (info or {}).get("org", ""), "source": "domain→ASN"})
+            continue
+        for asn in (data.get("asns") or []):
+            if asn not in seen:
+                seen.add(asn)
+                out.append({"asn": f"AS{asn}", "name": "", "source": "domain→ASN"})
     return out
 
 
