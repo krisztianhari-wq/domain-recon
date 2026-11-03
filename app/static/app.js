@@ -135,7 +135,7 @@ function renderOrgResult(d) {
     ${asns ? `<div class="kv"><b>ASN:</b> ${asns}</div>` : ""}
     <div class="kv" style="align-items:center;gap:8px;flex-wrap:wrap"><b>${t("org_prefixes")} (${pfx.length}):</b>
       <button class="btn" id="orgall" type="button">${t("org_all")}</button>
-      <button class="go" id="orgscan" type="button">${t("org_scan")}</button></div>
+      <button class="btn primary go" id="orgscan" type="button">${t("org_scan")}</button></div>
     <div class="orglist">${rows}</div>${notes}`;
   $("#orgall").addEventListener("click", () => { const cbs = $$(".orgpfx"); const on = cbs.every(c => c.checked); cbs.forEach(c => c.checked = !on); });
   $("#orgscan").addEventListener("click", orgScan);
