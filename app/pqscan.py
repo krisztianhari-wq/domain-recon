@@ -25,6 +25,7 @@ PQ_GROUPS = {4588: "X25519MLKEM768", 4587: "SecP256r1MLKEM768", 4589: "SecP384r1
              25497: "X25519Kyber768Draft00", 25498: "SecP256r1Kyber768Draft00"}
 CLASSICAL_GROUPS = {29: "x25519", 23: "secp256r1", 24: "secp384r1", 25: "secp521r1", 256: "ffdhe2048"}
 ALL_NAMES = {**PQ_GROUPS, **CLASSICAL_GROUPS}
+_BROWSER_GROUPS = [29, 23, 24]
 
 _SUITES = (0x1301, 0x1302, 0x1303, 0xC02C, 0xC030, 0xC02B, 0xC02F, 0x009D)
 _SIGALGS = (0x0403, 0x0503, 0x0603, 0x0804, 0x0805, 0x0806, 0x0401, 0x0501, 0x0601, 0x0807, 0x0808)
@@ -35,7 +36,7 @@ def _ext(t, body):
     return struct.pack(">HH", t, len(body)) + body
 
 
-def _client_hello(sni: str, groups) -> bytes:
+def _client_hello(sni: str, groups, share=None) -> bytes:
     suites = b"".join(struct.pack(">H", s) for s in _SUITES)
     sig = b"".join(struct.pack(">H", s) for s in _SIGALGS)
     grp = b"".join(struct.pack(">H", g) for g in groups)
@@ -46,7 +47,11 @@ def _client_hello(sni: str, groups) -> bytes:
     exts += _ext(13, struct.pack(">H", len(sig)) + sig)
     exts += _ext(43, b"\x02\x03\x04")
     exts += _ext(45, b"\x01\x01")
-    exts += _ext(51, b"\x00\x00")               # üres key_share → HRR
+    if share:                                   # (group, kulcs) → böngészőszerű key_share
+        ks = struct.pack(">HH", share[0], len(share[1])) + share[1]
+        exts += _ext(51, struct.pack(">H", len(ks)) + ks)
+    else:
+        exts += _ext(51, b"\x00\x00")           # üres key_share → HRR
     body = struct.pack(">H", 0x0303) + os.urandom(32) + b"\x20" + os.urandom(32)
     body += struct.pack(">H", len(suites)) + suites + b"\x01\x00" + struct.pack(">H", len(exts)) + exts
     hs = b"\x01" + struct.pack(">I", len(body))[1:] + body
@@ -63,11 +68,11 @@ def _recv(sock, n):
     return buf
 
 
-def _probe_groups_sync(host, port, groups, timeout):
+def _probe_groups_sync(host, port, groups, timeout, share=None):
     """(status, selected_group). status: hrr|serverhello|tls12|alert|error."""
     try:
         with socket.create_connection((host, port), timeout=timeout) as s:
-            s.sendall(_client_hello(host, groups))
+            s.sendall(_client_hello(host, groups, share))
             hdr = _recv(s, 5)
             typ, ln = hdr[0], struct.unpack(">H", hdr[3:5])[0]
             rec = _recv(s, ln)
@@ -199,7 +204,12 @@ async def assess(host: str, ip: str, port: int, timeout: float = 6.0) -> dict:
     if status in ("hrr", "serverhello") and grp in PQ_GROUPS:
         kex = {"group": PQ_GROUPS[grp], "status": "pq", "tls": "1.3"}
     else:
-        cstatus, cgrp = await asyncio.to_thread(_probe_groups_sync, ip, port, list(CLASSICAL_GROUPS), timeout)
+        # Böngészőszerű klasszikus ajánlat (x25519 kulcs + P-256/P-384, ffdhe nélkül): üres key_share-re
+        # sok szerver a saját listája elejéről ffdhe2048-at választana, amit valódi kliens sosem kap.
+        cstatus, cgrp = await asyncio.to_thread(_probe_groups_sync, ip, port, _BROWSER_GROUPS, timeout,
+                                                (29, os.urandom(32)))
+        if cstatus not in ("hrr", "serverhello", "tls12"):
+            cstatus, cgrp = await asyncio.to_thread(_probe_groups_sync, ip, port, list(CLASSICAL_GROUPS), timeout)
         if cstatus in ("hrr", "serverhello"):
             kex = {"group": ALL_NAMES.get(cgrp, "classical"), "status": "classical", "tls": "1.3"}
         elif cstatus == "tls12" or status == "tls12":
@@ -211,6 +221,9 @@ async def assess(host: str, ip: str, port: int, timeout: float = 6.0) -> dict:
     cert = classify_cert(der) if der else {}
     if ver and not kex.get("tls"):
         kex["tls"] = ver.replace("TLSv", "")
+    if kex["status"] == "unknown" and ver in ("TLSv1.2", "TLSv1.1", "TLSv1"):
+        # csak TLS 1.3-at ajánló ClientHello-ra a TLS 1.2-es szerver alerttel válaszol → a cert-lekérés mutatja
+        kex.update({"group": "ECDHE/RSA", "status": "classical"})
     # összegző verdikt
     if kex["status"] == "pq":
         verdict = "hybrid"           # PQ/hibrid kulcscsere → titkosság kvantum-biztos
