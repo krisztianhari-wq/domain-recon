@@ -213,15 +213,21 @@ async def _grafana(client, origin, host=None):
 
 
 async def _cacti(client, origin, host=None):
+    def _is_cacti(r):
+        # Csak 200-as, valódi oldal: az átirányító oldal címe („Redirecting to /cacti”) nem találat.
+        if not r or r[0] != 200:
+            return False
+        t = _title(r[1]).lower()
+        return ("cacti" in t and not t.startswith("redirect")) or "cacti.net" in (r[1] or "").lower()
+
     root = await _get(client, f"{origin}/", host)
-    body = root[1] if root else ""
-    hit = "cacti" in _title(body).lower() or "cacti.net" in body.lower() or "/cacti/" in body.lower()
-    if not hit:
+    if _is_cacti(root):
+        body = root[1]
+    else:
         alt = await _get(client, f"{origin}/cacti/", host)
-        if alt and ("cacti" in _title(alt[1]).lower() or "cacti.net" in (alt[1] or "").lower()):
-            body = alt[1]
-        else:
+        if not _is_cacti(alt):
             return None
+        body = alt[1]
     ver = _ver(r"[Vv]ersion\s*([0-9]+\.[0-9]+\.[0-9]+)", body) or _ver(r"cacti-version[^0-9]*([0-9.]+)", body)
     # CVE: < 1.2.27 → több súlyos (pl. CVE-2024-25641 tetszőleges fájlírás RCE)
     if _lt(ver, (1, 2, 27)):
