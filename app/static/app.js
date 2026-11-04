@@ -177,6 +177,17 @@ async function startCve() {
   } catch (e) { alert(t("err_start")); $("#cvego").disabled = false; }
 }
 
+async function startSvc() {   // kitett AI/low-code/monitoring eszközök felderítése az élő hostokon
+  if (!current) return;
+  $("#svcgo").disabled = true;
+  try {
+    const r = await fetch(`/api/scan/${current}/svc`, {method: "POST"});
+    if (!r.ok) { const e = await r.json().catch(() => ({})); alert(e.detail || t("err_start")); $("#svcgo").disabled = false; return; }
+    $("#svcprog").classList.remove("hide");
+    startPoll();
+  } catch (e) { alert(t("err_start")); $("#svcgo").disabled = false; }
+}
+
 async function startSubdomains() {   // domain-leltár: aldomén-felderítés az összes betöltött domainre
   if (!current) return;
   $("#subgo").disabled = true;
@@ -197,7 +208,7 @@ async function tick() {
   try { s = await (await fetch(`/api/scan/${current}`, {cache: "no-store"})).json(); }
   catch (e) { return; }
   scan = s; hosts = s.hosts || [];
-  renderProgress(s); renderActive(s); renderCve(s); renderSubdomains(s); renderStats(); renderPosture(s); renderHosts();
+  renderProgress(s); renderActive(s); renderCve(s); renderSvc(s); renderSubdomains(s); renderStats(); renderPosture(s); renderHosts();
   $("#md").href = `/report?id=${current}&lang=${LANG}`;   // nyomtatható PDF-jelentés (a UI nyelvén)
   $("#md").target = "_blank";
   $("#xlsx").href = `/api/export/${current}.xlsx`;
@@ -207,8 +218,9 @@ async function tick() {
   const passiveDone = ["done", "error", "canceled"].includes(s.status);
   const activeIdle = !["queued", "running"].includes(s.active_status);
   const cveIdle = !["queued", "running"].includes(s.cve_status);
+  const svcIdle = !["queued", "running"].includes(s.svc_status);
   const subIdle = !["queued", "running"].includes(s.sub_status);
-  if (passiveDone && activeIdle && cveIdle && subIdle) { stopPoll(); $("#go").disabled = false; $("#activego").disabled = false; $("#cvego").disabled = false; $("#subgo").disabled = false; loadHistory(); }
+  if (passiveDone && activeIdle && cveIdle && svcIdle && subIdle) { stopPoll(); $("#go").disabled = false; $("#activego").disabled = false; $("#cvego").disabled = false; $("#svcgo").disabled = false; $("#subgo").disabled = false; loadHistory(); }
 }
 
 function renderCve(s) {
@@ -224,6 +236,22 @@ function renderCve(s) {
     fill.style.width = pct + "%";
     $("#cstage").textContent = t("cve_scanning");
     $("#cprogtxt").textContent = `${s.cve_done || 0} / ${s.cve_total || 0}`;
+  }
+}
+
+function renderSvc(s) {
+  const passiveDone = ["done", "error", "canceled"].includes(s.status);
+  $("#svccard").classList.toggle("hide", !passiveDone || s.status === "error");
+  const running = ["queued", "running"].includes(s.svc_status);
+  $("#svcgo").disabled = running;
+  $("#svcgo").textContent = running ? t("svc_running") : (s.svc_status === "done" ? t("svc_done") + " · " + t("svc_go") : t("svc_go"));
+  $("#svcprog").classList.toggle("hide", !running);
+  if (running) {
+    const fill = $("#vprogbar").querySelector("i");
+    const pct = s.svc_total ? Math.round(s.svc_done / s.svc_total * 100) : 0;
+    fill.style.width = pct + "%";
+    $("#vstage").textContent = t("svc_scanning");
+    $("#vprogtxt").textContent = `${s.svc_done || 0} / ${s.svc_total || 0}`;
   }
 }
 
@@ -295,7 +323,9 @@ function renderActive(s) {
 
 // „kitett” = valóban kockázatos szolgáltatás (DB/admin/nyílt adattár) vagy sebezhetőség-találat.
 // Egy sima nyitott port (pl. 22/SSH, 25/SMTP) önmagában NEM tesz egy hostot kitetté.
-function isExposed(h) { return !!((h.exposed_flags && h.exposed_flags.length) || (h.vuln && h.vuln.length) || (h.cve && h.cve.length)); }
+function hasSvc(h) { return !!(h.svc && h.svc.length); }
+function svcNotable(h) { return !!(h.svc && h.svc.some(x => ["critical", "high"].includes(x.severity))); }
+function isExposed(h) { return !!((h.exposed_flags && h.exposed_flags.length) || (h.vuln && h.vuln.length) || (h.cve && h.cve.length) || svcNotable(h)); }
 function hasTakeover(h) { return h.takeover && h.takeover.service; }
 
 function renderStats() {
@@ -318,6 +348,8 @@ function renderStats() {
   }
   const cveHosts = hosts.filter(h => h.cve && h.cve.length).length;
   if (cveHosts) html += kp("bad", "cve", explainRec("cve"), t("m_cve"), cveHosts);
+  const svcHosts = hosts.filter(hasSvc).length;
+  if (svcHosts) html += kp(hosts.some(svcNotable) ? "warn" : "", "svc", "", t("m_svc"), svcHosts);
   $("#stats").innerHTML = html;
 }
 
@@ -380,6 +412,7 @@ function renderHosts() {
   else if (liveFilter === "exposed") list = list.filter(isExposed);
   else if (liveFilter === "takeover") list = list.filter(hasTakeover);
   else if (liveFilter === "cve") list = list.filter(h => h.cve && h.cve.length);
+  else if (liveFilter === "svc") list = list.filter(hasSvc);
   else if (liveFilter === "ports") list = list.filter(h => (h.ports || []).length);
   else if (liveFilter === "pq") list = list.filter(h => h.pq && h.pq.kex);
   else if (liveFilter === "sub") list = list.filter(h => h.from_sub);
@@ -411,6 +444,7 @@ function badges(h) {
   if (hasTakeover(h)) { const st = h.takeover.confirmed ? t("confirmed") : t("suspected"); b += `<span class="bdg bad" data-tip="${esc(explainRec("takeover"))}">takeover: ${esc(h.takeover.service)} (${st})</span>`; }
   (h.cve || []).forEach(v => { const c = v.cve && v.cve !== "—" ? " (" + esc(v.cve) + ")" : ""; b += `<span class="bdg ${SEVCLS[v.severity] || "bad"}" data-tip="${esc(fl(v, "evidence") || fl(v, "title"))}">${esc(v.severity)}: ${esc(fl(v, "title"))}${c}</span>`; });
   (h.vuln || []).forEach(v => { b += `<span class="bdg ${SEVCLS[v.severity] || ""}" data-tip="${esc(fl(v, "evidence") || fl(v, "title"))}">${esc(v.severity)}: ${esc(fl(v, "title"))}</span>`; });
+  (h.svc || []).forEach(v => { const c = v.cve && v.cve !== "—" ? " (" + esc(v.cve) + ")" : ""; const vs = v.version ? " " + esc(v.version) : ""; b += `<span class="bdg ${SEVCLS[v.severity] || ""}" data-tip="${esc(fl(v, "evidence") || fl(v, "title"))}">${esc(v.product)}${vs}${c}</span>`; });
   if (h.wildcard) b += `<span class="bdg" data-tip="${esc(explainRec("wildcard"))}">${t("wild")}</span>`;
   (h.exposed_flags || []).forEach(f => { b += `<span class="bdg warn" data-tip="${esc(explainRec("exposed"))}">${esc(f)}</span>`; });
   return b;
@@ -444,7 +478,7 @@ function renderHostRow(h) {
   const liveLabel = hasTakeover(h) ? "takeover" : (cls === "exposed" ? t("exposed") : h.alive ? t("live_yes") : t("live_no"));
   const chips = ports.length ? ports.slice(0, 6).map(portChip).join("") + (ports.length > 6 ? `<span class="tag">+${ports.length - 6}</span>` : "") : "";
   const portHtml = (chips + badges(h)) || `<span class="empty" style="margin:0">—</span>`;   // portok + találat-badge-ek
-  const open = ["cve", "exposed", "takeover"].includes(liveFilter) && (isExposed(h) || hasTakeover(h)) ? " open" : "";
+  const open = ["cve", "svc", "exposed", "takeover"].includes(liveFilter) && (isExposed(h) || hasTakeover(h) || hasSvc(h)) ? " open" : "";
   return `<details class="hrow ${cls}"${open}>
     <summary>
       <span class="dot"></span>
@@ -470,6 +504,15 @@ function cveBlock(h) {
   return grp("version", t("d_cve_ver")) + grp("fingerprint", t("d_cve_fp"));
 }
 
+function svcBlock(h) {
+  if (!(h.svc && h.svc.length)) return "";
+  return `<div class="kv"><b>${t("d_svc")}:</b> ` + h.svc.map(v => {
+    const c = v.cve && v.cve !== "—" ? " (" + esc(v.cve) + ")" : "";
+    const vs = v.version ? " " + esc(v.version) : "";
+    return `<span class="bdg ${SEVCLS[v.severity] || ""}" data-tip="${esc(fl(v, "evidence") || fl(v, "title"))}">${esc(v.product)}${vs} — ${esc(fl(v, "title"))}${c}</span>`;
+  }).join(" ") + "</div>";
+}
+
 function renderDetail(h) {
   const ipsTable = (h.ips_info && h.ips_info.length) ? `<div class="tablewrap"><table>
     <tr><th>IP</th><th data-tip="${esc(explainRec("ptr"))}">PTR</th><th data-tip="${esc(explainRec("asn"))}">ASN</th><th>Org</th><th>CC</th></tr>` +
@@ -483,6 +526,7 @@ function renderDetail(h) {
   const exp = (h.exposed_flags && h.exposed_flags.length) ? `<div class="kv" data-tip="${esc(explainRec("exposed"))}"><b>${t("d_exposed")}:</b> ${h.exposed_flags.map(x => `<span class="tag san">${esc(x)}</span>`).join(" ")}</div>` : "";
   const vuln = (h.vuln && h.vuln.length) ? `<div class="kv"><b>${t("d_vuln")}:</b> ${h.vuln.map(v => `<span class="bdg ${SEVCLS[v.severity] || ""}" data-tip="${esc(fl(v, "evidence"))}">${esc(v.severity)}: ${esc(fl(v, "title"))}</span>`).join(" ")}</div>` : "";
   const cve = cveBlock(h);
+  const svc = svcBlock(h);
   const pq = h.pq && h.pq.kex ? pqBlock(h.pq) : "";
   const sans = (h.tls_sans && h.tls_sans.length) ? `<div class="kv"><b>${t("d_sans")}:</b> ${h.tls_sans.map(s => `<span class="tag san">${esc(s)}</span>`).join(" ")}</div>` : "";
 
@@ -510,7 +554,7 @@ function renderDetail(h) {
   return `<div class="detail">
     <div class="kv">${h.cname ? `<span data-tip="${esc(explainRec("cname"))}"><b>${t("d_cname")}:</b> ${esc(h.cname)}</span>` : ""}
       <span><b>${t("d_source")}:</b> ${h.source_brute ? "brute" : "passzív"}</span></div>
-    ${ipsTable}${tk}${cve}${vuln}${pq}${tech}${exp}${sans}${portsTbl}${full}</div>`;
+    ${ipsTable}${tk}${cve}${svc}${vuln}${pq}${tech}${exp}${sans}${portsTbl}${full}</div>`;
 }
 
 async function startScanFor(host) {   // egy domain teljes passzív vizsgálata a leltárból
@@ -559,7 +603,7 @@ async function openScan(id) {
 
 function resetView() {
   current = null; stopPoll();
-  ["results", "stats", "progcard", "posture", "activecard", "cvecard"].forEach(id => $("#" + id).classList.add("hide"));
+  ["results", "stats", "progcard", "posture", "activecard", "cvecard", "svccard", "subcard"].forEach(id => $("#" + id).classList.add("hide"));
 }
 
 // ---- vezérlők ----
@@ -572,6 +616,7 @@ $("#orgsearch").addEventListener("click", orgSearch);
 $("#orgq").addEventListener("keydown", e => { if (e.key === "Enter") orgSearch(); });
 $("#activego").addEventListener("click", startActive);
 $("#cvego").addEventListener("click", startCve);
+$("#svcgo").addEventListener("click", startSvc);
 $("#subgo").addEventListener("click", startSubdomains);
 $("#filter").addEventListener("input", renderHosts);
 $("#cancel").addEventListener("click", async () => { if (current) await fetch(`/api/scan/${current}/cancel`, {method: "POST"}); });

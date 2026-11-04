@@ -30,6 +30,7 @@ from . import enrich
 from . import fingerprint as fp
 from . import netchecks as nc
 from . import cvescan
+from . import probe_services
 from . import pqscan
 from . import sources
 from . import vulncheck
@@ -587,6 +588,55 @@ class Engine:
             pass
         return findings
 
+    async def run_svc(self):
+        """Önálló fázis: az élő hostokon kitett AI / low-code és monitoring eszközök felismerése
+        (Flowise, Langflow, n8n, Open WebUI, Ollama, Grafana, Cacti, …) → termék + verzió + auth-állapot
+        + ismert sebezhető verzió. GET-only, NEM kihasználás; nem igényli az aktív portscant."""
+        self.db.set_status(self.id, "done", svc_status="running")   # a passzív/aktív/CVE állapot marad
+        self.db.set_svc_progress(self.id, "svc", 0, 0)
+        _ENGINES[self.id] = self
+        try:
+            hosts = {h["host"]: h for h in self.db.hosts(self.id)}
+            targets = [(h, d) for h, d in hosts.items() if d.get("alive")]
+            total = len(targets)
+            self.db.set_svc_progress(self.id, "svc", 0, total)
+            sem = asyncio.Semaphore(self.hc)
+            done = 0
+            async with httpx.AsyncClient(headers={"User-Agent": UA}, follow_redirects=False, verify=False) as client:
+
+                async def one(host: str, d: dict):
+                    nonlocal done
+                    async with sem, self._gsem:
+                        self._check()
+                        findings = await self._svc_host(client, host, d)
+                    d["svc"] = findings
+                    self.db.upsert_host(self.id, host, d)
+                    done += 1
+                    self.db.set_svc_progress(self.id, "svc", done, total)
+
+                await asyncio.gather(*(one(h, d) for h, d in targets))
+            self.db.set_svc_progress(self.id, "done", 1, 1)
+            self.db.set_status(self.id, "done", svc_status="done")
+        except Cancelled:
+            self.db.set_status(self.id, "done", svc_status="canceled")
+        except Exception as e:  # noqa: BLE001
+            self.db.set_status(self.id, "done", svc_status="error", error=f"{e.__class__.__name__}: {e}"[:300])
+        finally:
+            _ENGINES.pop(self.id, None)
+
+    async def _svc_host(self, client, host: str, d: dict) -> list[dict]:
+        open_ports = [p.get("port") for p in (d.get("ports") or []) if p.get("port")]
+        # Portscan nélkül is nézzük a szokásos web-portokat, hogy a reverse proxy mögötti telepítések is meglegyenek.
+        for p in (443, 80):
+            if p not in open_ports:
+                open_ports.append(p)
+        ips = d.get("ips") or [i.get("ip") for i in (d.get("ips_info") or []) if i.get("ip")]
+        ip = ips[0] if ips else ""
+        try:
+            return await probe_services.probe_host(client, host, ip, open_ports, timeout=self.ftimeout)
+        except Exception:  # noqa: BLE001
+            return []
+
 
 # ---- indítók ----
 def start_passive(db, scan_id: str, domain: str, opts: dict) -> Engine:
@@ -607,6 +657,13 @@ def start_cve(db, scan_id: str) -> Engine:
     s = db.get_scan(scan_id)
     eng = Engine(db, scan_id, s["domain"], s.get("opts") or {})
     asyncio.create_task(eng.run_cve())
+    return eng
+
+
+def start_svc(db, scan_id: str) -> Engine:
+    s = db.get_scan(scan_id)
+    eng = Engine(db, scan_id, s["domain"], s.get("opts") or {})
+    asyncio.create_task(eng.run_svc())
     return eng
 
 

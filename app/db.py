@@ -33,6 +33,10 @@ CREATE TABLE IF NOT EXISTS scans(
   sub_stage  TEXT,
   sub_done   INTEGER DEFAULT 0,
   sub_total  INTEGER DEFAULT 0,
+  svc_status TEXT DEFAULT 'none',    -- külön indítható kitett-eszköz-felderítés (AI/low-code/monitoring): none|queued|running|done|error|canceled
+  svc_stage  TEXT,
+  svc_done   INTEGER DEFAULT 0,
+  svc_total  INTEGER DEFAULT 0,
   posture   TEXT,                   -- JSON: apex DNS-posture (MX/NS/SPF/DMARC/CAA/DKIM)
   wildcard  TEXT,                   -- JSON: wildcard-IP-k
   n_hosts   INTEGER DEFAULT 0,
@@ -76,6 +80,8 @@ class DB:
             "cve_done": "INTEGER DEFAULT 0", "cve_total": "INTEGER DEFAULT 0",
             "sub_status": "TEXT DEFAULT 'none'", "sub_stage": "TEXT",
             "sub_done": "INTEGER DEFAULT 0", "sub_total": "INTEGER DEFAULT 0",
+            "svc_status": "TEXT DEFAULT 'none'", "svc_stage": "TEXT",
+            "svc_done": "INTEGER DEFAULT 0", "svc_total": "INTEGER DEFAULT 0",
         }
         for col, decl in add.items():
             if col not in have:
@@ -92,7 +98,8 @@ class DB:
     _STATUS_COLS = {"stage", "done", "total", "error", "n_hosts", "n_live", "n_ports", "started", "finished",
                     "note", "active_status", "active_stage", "active_done", "active_total",
                     "cve_status", "cve_stage", "cve_done", "cve_total",
-                    "sub_status", "sub_stage", "sub_done", "sub_total"}
+                    "sub_status", "sub_stage", "sub_done", "sub_total",
+                    "svc_status", "svc_stage", "svc_done", "svc_total"}
 
     def set_status(self, scan_id: str, status: str, **fields) -> None:
         cols, vals = ["status"], [status]
@@ -129,6 +136,11 @@ class DB:
 
     def set_sub_progress(self, scan_id: str, stage: str, done: int, total: int) -> None:
         self._cx.execute("UPDATE scans SET sub_stage=?,sub_done=?,sub_total=? WHERE id=?",
+                         (stage, done, total, scan_id))
+        self._cx.commit()
+
+    def set_svc_progress(self, scan_id: str, stage: str, done: int, total: int) -> None:
+        self._cx.execute("UPDATE scans SET svc_stage=?,svc_done=?,svc_total=? WHERE id=?",
                          (stage, done, total, scan_id))
         self._cx.commit()
 

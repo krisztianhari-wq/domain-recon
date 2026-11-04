@@ -15,7 +15,8 @@ E = html.escape
 def _status(h: dict) -> str:
     if h.get("takeover") and h["takeover"].get("service"):
         return "takeover"
-    if (h.get("exposed_flags") or h.get("vuln") or h.get("cve")):
+    if (h.get("exposed_flags") or h.get("vuln") or h.get("cve")
+            or any(v.get("severity") in ("critical", "high") for v in (h.get("svc") or []))):
         return "exposed"
     return "live" if h.get("alive") else "dead"
 
@@ -71,6 +72,8 @@ def _host_clean(h: dict) -> dict:
             "by_version": [v for v in cves if (v.get("method") or "version") == "version"],
             "by_fingerprint": [v for v in cves if v.get("method") == "fingerprint"],
         }
+    if h.get("svc"):
+        out["exposed_tools"] = h["svc"]
     if h.get("takeover") and h["takeover"].get("service"):
         out["takeover"] = h["takeover"]
     if h.get("pq") and h["pq"].get("kex"):
@@ -184,6 +187,15 @@ def _host_md(h: dict) -> str:
     cves = h.get("cve") or []
     _md_cve([v for v in cves if (v.get("method") or "version") == "version"], "Ismert CVE — verzió alapján")
     _md_cve([v for v in cves if v.get("method") == "fingerprint"], "Ismert CVE — ujjlenyomat alapján")
+    # kitett AI / low-code / monitoring eszközök
+    if h.get("svc"):
+        lines.append("")
+        lines.append("**Kitett eszközök (AI / low-code / monitoring):**")
+        for v in h["svc"]:
+            cve = f" ({v['cve']})" if v.get("cve") and v["cve"] != "—" else ""
+            ev = f" — {v['evidence']}" if v.get("evidence") else ""
+            ver = f" {v['version']}" if v.get("version") else ""
+            lines.append(f"- [{v.get('severity','?')}] {v.get('product','')}{ver} — {v.get('title','')}{cve}{ev}")
     # portok
     if h.get("ports"):
         lines.append("")
@@ -419,7 +431,7 @@ _RT = {
    "ip":"IP","cname":"CNAME","source":"Forrás","brute":"brute","psv":"passzív","tech":"Technológia",
    "takeover":"Lehetséges takeover","confirmed":"megerősítve","suspected":"gyanús",
    "cve_ver":"Ismert CVE — verzió alapján","cve_fp":"Ismert CVE — ujjlenyomat alapján","vuln":"Kitettség / sebezhetőség",
-   "exposed_svc":"Kitett szolgáltatás","pq":"Kvantum-reziliencia (TLS)",
+   "exposed_svc":"Kitett szolgáltatás","svc_tools":"Kitett eszközök (AI / low-code / monitoring)","pq":"Kvantum-reziliencia (TLS)",
    "pq_hybrid":"kvantum-biztos (hibrid ML-KEM)","pq_classical":"klasszikus — HNDL-kockázat","pq_unknown":"ismeretlen",
    "pq_kex":"kulcscsere","pq_cert":"cert","pq_sig":"aláírás",
    "th_port":"Port","th_svc":"Szolgáltatás","th_detail":"Részlet","th_rtt":"RTT","tls_san":"TLS SAN",
@@ -435,7 +447,7 @@ _RT = {
    "ip":"IP","cname":"CNAME","source":"Source","brute":"brute","psv":"passive","tech":"Technology",
    "takeover":"Possible takeover","confirmed":"confirmed","suspected":"suspected",
    "cve_ver":"Known CVE — by version","cve_fp":"Known CVE — by fingerprint","vuln":"Exposure / vulnerability",
-   "exposed_svc":"Exposed service","pq":"Quantum resilience (TLS)",
+   "exposed_svc":"Exposed service","svc_tools":"Exposed tools (AI / low-code / monitoring)","pq":"Quantum resilience (TLS)",
    "pq_hybrid":"quantum-safe (hybrid ML-KEM)","pq_classical":"classical — HNDL risk","pq_unknown":"unknown",
    "pq_kex":"key exchange","pq_cert":"cert","pq_sig":"signature",
    "th_port":"Port","th_svc":"Service","th_detail":"Detail","th_rtt":"RTT","tls_san":"TLS SAN",
@@ -549,6 +561,12 @@ def _host_html(h: dict, t: dict, lang: str = "hu", focus: str = "full", cvefilte
     _find_list(ver_cves, t["cve_ver"])
     _find_list(fp_cves, t["cve_fp"])
     _find_list(h.get("vuln") or [], t["vuln"])
+    if h.get("svc"):
+        li = "".join(f'<li class="sev-{E(str(v.get("severity","")))}"><b>{E(str(v.get("severity","")))}:</b> '
+                     f'{E(str(v.get("product","")))}{(" " + E(str(v["version"]))) if v.get("version") else ""} — '
+                     f'{E(_fl(v, lang, "title"))}{(" (" + E(v["cve"]) + ")") if v.get("cve") and v["cve"] != "—" else ""}'
+                     f'{(" — " + E(_fl(v, lang, "evidence"))) if _fl(v, lang, "evidence") else ""}</li>' for v in h["svc"])
+        out.append(f'<p><b>{t["svc_tools"]}:</b></p><ul class="find">{li}</ul>')
     if h.get("exposed_flags"):
         out.append(f'<p><b>{t["exposed_svc"]}:</b> ' + E(", ".join(h["exposed_flags"])) + "</p>")
     if h.get("pq") and h["pq"].get("kex"):
@@ -773,6 +791,16 @@ def build_pdf(scan: dict, hosts: list[dict], lang: str = "hu", focus: str = "ful
             if h.get("tech"):
                 fl.append(Paragraph(f'<b>{t["tech"]}:</b> {E(", ".join(h["tech"]))}', S["n"]))
             finds(h.get("vuln") or [], t["vuln"])
+            if h.get("svc"):
+                fl.append(Paragraph(f'<b>{t["svc_tools"]}:</b>', S["n"]))
+                for v in h["svc"]:
+                    col = SEVC.get(v.get("severity"), colors.black).hexval()[2:]
+                    cveid = f' ({E(v["cve"])})' if v.get("cve") and v["cve"] != "—" else ""
+                    evt = _fl(v, lang, "evidence")
+                    ev = f' — {E(evt)}' if evt else ""
+                    ver = f' {E(str(v["version"]))}' if v.get("version") else ""
+                    fl.append(Paragraph(f'&bull; <font color="#{col}"><b>{E(v.get("severity",""))}:</b></font> '
+                                        f'{E(str(v.get("product","")))}{ver} — {E(_fl(v, lang, "title"))}{cveid}{ev}', S["find"]))
             if h.get("exposed_flags"):
                 fl.append(Paragraph(f'<b>{t["exposed_svc"]}:</b> {E(", ".join(h["exposed_flags"]))}', S["n"]))
             if h.get("pq") and h["pq"].get("kex"):

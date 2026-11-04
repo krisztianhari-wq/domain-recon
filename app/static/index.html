@@ -138,6 +138,34 @@
     </div>
   </section>
 
+  <section class="card hide" id="svccard">
+    <div class="row">
+      <div><h2 data-i18n="svc_title">Kitett eszközök (AI / low-code / monitoring)</h2><p class="sub" data-i18n="svc_help">Az élő hostokon kíméletes GET-ekkel: Flowise, Langflow, n8n, Open WebUI, Ollama, Grafana, Cacti… → termék + verzió + auth-állapot + ismert sebezhető verzió (nem kihasználás).</p></div>
+      <button class="btn primary go" id="svcgo" type="button" data-i18n="svc_go">Kitett-eszköz felderítés indítása</button>
+    </div>
+    <details class="cveinfo">
+      <summary data-i18n="svc_info_sum">Mit néz a vizsgálat?</summary>
+      <p class="sub" data-i18n="svc_info_ai">AI / low-code:</p>
+      <ul class="cveinfo-list">
+        <li data-i18n="svc_info_ollama">Ollama API — verzió, nyílt /api/tags (auth nélkül), Probllama RCE (CVE-2024-37032)</li>
+        <li data-i18n="svc_info_openwebui">Open WebUI — verzió, nyitott regisztráció / kikapcsolt auth</li>
+        <li data-i18n="svc_info_flowise">Flowise — verzió, auth nélküli felület, auth-bypass (CVE-2024-31621)</li>
+        <li data-i18n="svc_info_langflow">Langflow — verzió, unauth RCE (CVE-2025-3248)</li>
+        <li data-i18n="svc_info_n8n">n8n — verzió, beállítatlan (nyitott owner-regisztráció)</li>
+      </ul>
+      <p class="sub" data-i18n="svc_info_mon">Monitoring:</p>
+      <ul class="cveinfo-list">
+        <li data-i18n="svc_info_grafana">Grafana — verzió, path traversal (CVE-2021-43798)</li>
+        <li data-i18n="svc_info_cacti">Cacti — verzió, ismert RCE (&lt; 1.2.27)</li>
+        <li data-i18n="svc_info_other">Zabbix, Netdata, Prometheus, Portainer — elérhetőség + verzió</li>
+      </ul>
+    </details>
+    <div class="prog hide" id="svcprog">
+      <div class="progmeta"><span><span class="stage-chip" id="vstage">–</span> · <span id="vprogtxt">0 / 0</span></span></div>
+      <div class="progbar" id="vprogbar"><i></i></div>
+    </div>
+  </section>
+
   <section class="card hide" id="subcard">
     <div class="row">
       <div><h2 data-i18n="sub_title">Aldomén-felderítés</h2><p class="sub" data-i18n="sub_help">A betöltött domainekre CT-alapú aldomén-felderítés; az új hostok a leltárhoz adódnak (passzív).</p></div>
@@ -157,6 +185,7 @@
         <button type="button" data-v="live" data-i18n="f_live">Élő</button>
         <button type="button" data-v="exposed" data-i18n="f_exposed">Kitett</button>
         <button type="button" data-v="cve" data-i18n="f_cve">CVE</button>
+        <button type="button" data-v="svc" data-i18n="f_svc">Eszközök</button>
         <button type="button" data-v="takeover" data-i18n="f_takeover">Takeover</button>
         <button type="button" data-v="sub" data-i18n="f_sub">Aldomén</button>
         <button type="button" data-v="dead" data-i18n="f_dead">Nem élő</button>

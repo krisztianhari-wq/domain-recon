@@ -409,6 +409,20 @@ async def api_scan_cve(scan_id: str):
     return {"id": scan_id, "cve": "running"}
 
 
+@app.post("/api/scan/{scan_id}/svc")
+async def api_scan_svc(scan_id: str):
+    """Önálló fázis: kitett AI / low-code és monitoring eszközök felismerése az élő hostokon."""
+    s = db.get_scan(scan_id)
+    if not s:
+        raise HTTPException(404, "Nincs ilyen vizsgálat.")
+    if s["status"] in ("queued", "running"):
+        raise HTTPException(409, "A passzív fázis még fut.")
+    if s.get("svc_status") in ("queued", "running"):
+        raise HTTPException(409, "A kitett-eszköz-felderítés már fut.")
+    engine.start_svc(db, scan_id)
+    return {"id": scan_id, "svc": "running"}
+
+
 @app.post("/api/scan/{scan_id}/subdomains")
 async def api_scan_subdomains(scan_id: str):
     """Domain-leltár külön fázisa: a betöltött domainekre CT-alapú aldomén-felderítés."""
@@ -526,6 +540,7 @@ async def api_export_csv(scan_id: str):
         first = False
         info0 = (h.get("ips_info") or [{}])[0]
         findings = "; ".join([f"{v.get('severity')}:{v.get('title')}" for v in (h.get("vuln") or []) + (h.get("cve") or [])]
+                             + [f"{v.get('severity')}:{v.get('product')} {v.get('version','')}".strip() + (f" ({v['cve']})" if v.get("cve") else "") for v in (h.get("svc") or [])]
                              + (h.get("exposed_flags") or [])
                              + ([f"takeover:{h['takeover']['service']}"] if h.get("takeover", {}).get("service") else []))
         hostcells = [h["host"], report._status(h), " ".join(h.get("ips", [])), info0.get("ptr") or "",
