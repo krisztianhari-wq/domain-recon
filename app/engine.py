@@ -32,6 +32,7 @@ from . import netchecks as nc
 from . import cvescan
 from . import probe_services
 from . import pqscan
+from . import seocheck
 from . import sources
 from . import vulncheck
 from .ports import EXPECTED_WEB, TLS_PORTS, resolve_profile, svc
@@ -638,6 +639,60 @@ class Engine:
             return []
 
 
+    async def run_seo(self, full: list[str], quick: list[str]):
+        """Önálló fázis: SEO / AI-láthatóság a kiválasztott webhelyeken (teljes audit) és a többi jelöltön
+        (gyors átfutás). Domain-szintű eredmény a scans.seo JSON-ban. GET-only, kíméletes, saját UA."""
+        self.db.set_status(self.id, "done", seo_status="running")
+        total = len(full) + len(quick)
+        self.db.set_seo_progress(self.id, "seo", 0, total)
+        _ENGINES[self.id] = self
+        result = {"started": int(time.time()), "sites": [], "quick": [], "ua": seocheck.UA}
+        try:
+            allow = lambda ip: scannable(ip, self.allow_private)   # noqa: E731
+            done = 0
+            limits = httpx.Limits(max_connections=4, max_keepalive_connections=2)
+            async with httpx.AsyncClient(timeout=seocheck.TIMEOUT, verify=True, limits=limits) as client:
+                for url in full:
+                    self._check()
+                    fx = seocheck._Fetcher(client, allow)
+                    try:
+                        res = await seocheck.audit_site(
+                            fx, url, progress=lambda st: self.db.set_seo_progress(self.id, f"seo:{st}", done, total))
+                    except seocheck_errors as e:
+                        res = {"url": url, "mode": "full", "error": f"{e.__class__.__name__}: {e}"[:200],
+                               "findings": [], "facts": {}}
+                    result["sites"].append(res)
+                    done += 1
+                    self.db.set_seo(self.id, result)
+                    self.db.set_seo_progress(self.id, "seo", done, total)
+                for url in quick:
+                    self._check()
+                    fx = seocheck._Fetcher(client, allow)
+                    try:
+                        res = await seocheck.quick_site(fx, url)
+                    except seocheck_errors as e:
+                        res = {"url": url, "mode": "quick", "error": f"{e.__class__.__name__}: {e}"[:200],
+                               "findings": [], "facts": {}}
+                    result["quick"].append(res)
+                    done += 1
+                    self.db.set_seo_progress(self.id, "seo:quick", done, total)
+            result["finished"] = int(time.time())
+            self.db.set_seo(self.id, result)
+            self.db.set_seo_progress(self.id, "done", total, total)
+            self.db.set_status(self.id, "done", seo_status="done")
+        except Cancelled:
+            self.db.set_seo(self.id, result)
+            self.db.set_status(self.id, "done", seo_status="canceled")
+        except Exception as e:  # noqa: BLE001
+            self.db.set_seo(self.id, result)
+            self.db.set_status(self.id, "done", seo_status="error", error=f"{e.__class__.__name__}: {e}"[:300])
+        finally:
+            _ENGINES.pop(self.id, None)
+
+
+seocheck_errors = (httpx.HTTPError, OSError, ValueError, UnicodeError, asyncio.TimeoutError)
+
+
 # ---- indítók ----
 def start_passive(db, scan_id: str, domain: str, opts: dict) -> Engine:
     eng = Engine(db, scan_id, domain, opts)
@@ -664,6 +719,13 @@ def start_svc(db, scan_id: str) -> Engine:
     s = db.get_scan(scan_id)
     eng = Engine(db, scan_id, s["domain"], s.get("opts") or {})
     asyncio.create_task(eng.run_svc())
+    return eng
+
+
+def start_seo(db, scan_id: str, full: list[str], quick: list[str]) -> Engine:
+    s = db.get_scan(scan_id)
+    eng = Engine(db, scan_id, s["domain"], s.get("opts") or {})
+    asyncio.create_task(eng.run_seo(full, quick))
     return eng
 
 

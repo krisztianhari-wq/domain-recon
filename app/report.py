@@ -101,8 +101,91 @@ def build_json(scan: dict, hosts: list[dict]) -> dict:
         },
         "dns_posture": scan.get("posture"),
         "wildcard_ips": scan.get("wildcard") or [],
+        "seo": scan.get("seo"),
         "hosts": [_host_clean(h) for h in hosts],
     }
+
+
+# ---------------- SEO / AI-láthatóság (domain-szintű fázis) ----------------
+_SEO_T = {
+    "hu": {"h": "SEO / AI-láthatóság", "quick": "Gyors átfutás", "score": "pontszám", "words": "szó JS nélkül",
+           "none": "nincs találat", "cats": {"access": "Elérés", "redirect": "Átirányítás", "canonical": "Canonical",
+           "meta": "Meta", "content": "Tartalom", "schema": "Strukt. adat", "i18n": "Nyelvek", "images": "Képek", "ai": "AI"},
+           "nm": "Kívülről nem mérhető: indexelt oldalak, helyezések/CTR (Search Console), backlinkek, Google Business Profile, valódi AI-idézettség, tényleges botforgalom."},
+    "en": {"h": "SEO / AI visibility", "quick": "Quick pass", "score": "score", "words": "words without JS",
+           "none": "no findings", "cats": {"access": "Access", "redirect": "Redirects", "canonical": "Canonical",
+           "meta": "Meta", "content": "Content", "schema": "Struct. data", "i18n": "Languages", "images": "Images", "ai": "AI"},
+           "nm": "Not measurable from outside: indexed pages, rankings/CTR (Search Console), backlinks, Google Business Profile, real AI citations, actual bot traffic."},
+}
+
+
+def _seo_view(seo: dict | None, lang: str = "hu") -> dict | None:
+    """Nyelvfüggetlen nézet a riportokhoz: webhelyenként pontszám, kategóriák, találatok (HU/EN)."""
+    if not seo or not (seo.get("sites") or seo.get("quick")):
+        return None
+    T = _SEO_T.get(lang, _SEO_T["hu"])
+    sites = []
+    for st in seo.get("sites") or []:
+        sc = st.get("score") or {}
+        sites.append({
+            "url": st.get("final_url") or st.get("url"), "error": st.get("error"),
+            "overall": sc.get("overall"), "words": (st.get("facts") or {}).get("words_nojs"),
+            "cats": ", ".join(f"{T['cats'].get(k, k)} {v}" for k, v in (sc.get("by_cat") or {}).items()),
+            "findings": [(f.get("severity", ""), _fl(f, lang, "title"), _fl(f, lang, "evidence")) for f in st.get("findings") or []],
+        })
+    quick = []
+    for q in seo.get("quick") or []:
+        fa = q.get("facts") or {}
+        quick.append({"url": q.get("final_url") or q.get("url"), "status": fa.get("status") or fa.get("error"),
+                      "title": fa.get("title"), "words": fa.get("words_nojs"),
+                      "issues": [_fl(f, lang, "title") for f in q.get("findings") or []]})
+    return {"T": T, "sites": sites, "quick": quick}
+
+
+def _seo_md(seo, lang="hu") -> list[str]:
+    v = _seo_view(seo, lang)
+    if not v:
+        return []
+    T, L = v["T"], ["", f"## {v['T']['h']}", ""]
+    for s in v["sites"]:
+        L.append(f"### {s['url']}" + (f" — {T['score']}: {s['overall']}/100" if s["overall"] is not None else ""))
+        if s["error"]:
+            L.append(f"- ⚠ {s['error']}")
+        if s["cats"]:
+            L.append(f"- {s['cats']}" + (f" · {s['words']} {T['words']}" if s["words"] is not None else ""))
+        for sev, title, ev in s["findings"] or [("", T["none"], "")]:
+            L.append(f"- **{sev}** {title}" + (f" — {ev}" if ev else ""))
+        L.append("")
+    if v["quick"]:
+        L.append(f"### {T['quick']}")
+        for q in v["quick"]:
+            L.append(f"- {q['url']} — HTTP {q['status']} · {q['title'] or '–'} · {q['words']} {T['words']}"
+                     + (f" — {'; '.join(q['issues'])}" if q["issues"] else ""))
+        L.append("")
+    L.append(f"_{T['nm']}_")
+    return L
+
+
+def _seo_html(seo, lang="hu") -> str:
+    v = _seo_view(seo, lang)
+    if not v:
+        return ""
+    T = v["T"]
+    out = [f'<h2>{E(T["h"])}</h2>']
+    for s in v["sites"]:
+        out.append(f'<h3>{E(s["url"])}' + (f' — {E(T["score"])}: {s["overall"]}/100' if s["overall"] is not None else "") + "</h3>")
+        if s["error"]:
+            out.append(f'<p class="warn">{E(s["error"])}</p>')
+        if s["cats"]:
+            out.append(f'<p class="meta">{E(s["cats"])}' + (f' · {s["words"]} {E(T["words"])}' if s["words"] is not None else "") + "</p>")
+        li = "".join(f'<li><b>{E(sev)}</b> {E(title)}' + (f' — {E(ev)}' if ev else "") + "</li>" for sev, title, ev in s["findings"])
+        out.append(f'<ul class="find">{li or "<li>" + E(T["none"]) + "</li>"}</ul>')
+    if v["quick"]:
+        li = "".join(f'<li>{E(q["url"])} — HTTP {E(str(q["status"]))} · {E(q["title"] or "–")} · {E(str(q["words"]))} {E(T["words"])}'
+                     + (f' — {E("; ".join(q["issues"]))}' if q["issues"] else "") + "</li>" for q in v["quick"])
+        out.append(f'<h3>{E(T["quick"])}</h3><ul class="find">{li}</ul>')
+    out.append(f'<p class="meta">{E(T["nm"])}</p>')
+    return "".join(out)
 
 
 # ---------------- Markdown-jelentés ----------------
@@ -274,6 +357,7 @@ def build_markdown(scan: dict, hosts: list[dict]) -> str:
     live = sorted([h for h in hosts if _status(h) == "live"], key=lambda h: h["host"])
     dead = sorted([h for h in hosts if _status(h) == "dead"], key=lambda h: h["host"])
 
+    L += _seo_md(scan.get("seo"), "hu")
     if attn:
         L.append("## ⚠ Figyelmet igénylő hostok")
         L.append("")
@@ -641,6 +725,7 @@ def build_html(scan: dict, hosts: list[dict], lang: str = "hu", focus: str = "fu
         if wc:
             posture += f'<p class="warn">{t["wildcard"]}: {E(", ".join(wc))}</p>'
 
+    seo_html = _seo_html(scan.get("seo"), lang) if focus != "cve" else ""
     cvefilter = cve.strip()
     if focus == "cve":
         shown = [h for h in hosts if any(_cve_match(v, cvefilter) for v in (h.get("cve") or []))]
@@ -687,6 +772,7 @@ def build_html(scan: dict, hosts: list[dict], lang: str = "hu", focus: str = "fu
 <p class="sub">{_fmt_dt(scan.get('created'))} · {ver} · {t["passive"]}: {E(str(scan.get('status','?')))} · {t["active"]}: {E(str(scan.get('active_status','none')))} · {t["cve"]}: {E(str(scan.get('cve_status','none')))}</p></header>
 <div class="stats">{stats}</div>
 {posture}
+{seo_html}
 {body}
 <footer>{t["footer"]}</footer>
 </div></body></html>"""
@@ -759,6 +845,20 @@ def build_pdf(scan: dict, hosts: list[dict], lang: str = "hu", focus: str = "ful
             story.append(Paragraph(f'<b>{E(lab)}:</b> {E(val)}', S["n"]))
         if scan.get("wildcard"):
             story.append(Paragraph(f'<b>{t["wildcard"]}:</b> {E(", ".join(scan["wildcard"]))}', S["n"]))
+    sv = _seo_view(scan.get("seo"), lang) if focus != "cve" else None
+    if sv:
+        story.append(Paragraph(E(sv["T"]["h"]), S["h2"]))
+        for st in sv["sites"]:
+            head = st["url"] + (f' — {sv["T"]["score"]}: {st["overall"]}/100' if st["overall"] is not None else "")
+            story.append(Paragraph(f'<b>{E(head)}</b>', S["n"]))
+            if st["cats"]:
+                story.append(Paragraph(E(st["cats"]), S["n"]))
+            for sev, title, ev in st["findings"][:40]:
+                story.append(Paragraph(f'• <b>{E(sev)}</b> {E(title)}' + (f' — {E(ev[:220])}' if ev else ""), S["n"]))
+        for q in sv["quick"]:
+            story.append(Paragraph(E(f'{q["url"]} — HTTP {q["status"]} · {q["title"] or "–"} · {q["words"]} {sv["T"]["words"]}'
+                                     + (f' — {"; ".join(q["issues"])}' if q["issues"] else "")), S["n"]))
+        story.append(Paragraph(f'<i>{E(sv["T"]["nm"])}</i>', S["n"]))
 
     def host_flow(h):
         st = _status(h)

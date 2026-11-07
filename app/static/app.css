@@ -208,3 +208,21 @@ th[data-tip],td[data-tip]{text-decoration:underline dotted var(--color-text-mute
 @media (max-width:360px){
   .brand{font-size:16px}.brand small{font-size:16px}
 }
+
+/* SEO / AI-láthatóság kártya */
+.seocands{display:flex;flex-direction:column;gap:6px;margin:var(--space-3) 0}
+.seocand{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:8px 10px;border:1px solid var(--color-border);border-radius:var(--radius-md);font-size:13px;cursor:pointer}
+.seocand .seoh{font-weight:600;word-break:break-all}
+.seocand .seor{flex-basis:100%;font-size:12px}
+.seoadd{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-bottom:var(--space-3)}
+.seoquick{font-size:13px;display:flex;gap:6px;align-items:flex-start}
+.seomanual{display:flex;gap:6px;flex:1 1 280px;min-width:0}
+.seomanual .input{flex:1;min-width:0}
+.seosite{border:1px solid var(--color-border);border-radius:var(--radius-md);padding:var(--space-3) var(--space-4);margin-top:var(--space-3)}
+.seohead{display:flex;flex-wrap:wrap;gap:8px;align-items:center;word-break:break-all}
+.seocats{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.seofind{margin:4px 0;padding-left:18px;font-size:13px}
+.seofind li{margin:4px 0;overflow-wrap:anywhere}
+.seonote{font-size:12px;margin-top:var(--space-3)}
+.seocats .tag.warn{background:var(--color-warning-soft);color:var(--color-warning-text)}
+.seocats .tag.bad{background:var(--color-danger-soft);color:var(--color-danger-text)}

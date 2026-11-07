@@ -32,6 +32,27 @@ graph, and standalone desktop apps for macOS and Windows.
   services (databases, RDP, SMB, Redis, …).
 - Optional **DNS brute-force** with a built-in prefix wordlist.
 
+**SEO / AI visibility** (separate button, narrow scope by design):
+- Runs on **selected websites only**, not on every discovered IP. A ranked candidate list is built
+  from the inventory **without extra requests**: the apex/www site is pre-selected; bare IPs, dead
+  hosts, infrastructure names (`mail`, `vpn`, `autodiscover`, `api`…), login pages, 401/403, default or
+  parked pages, non-HTML responses and known appliances are excluded, and hosts that redirect to the
+  same site are merged. Every exclusion is listed with its reason. Manual URLs are accepted only for
+  hosts in the inventory or under the scanned domain.
+- **Full audit** (~20–40 polite, sequential GETs per site, own User-Agent): HTTP/HTTPS × www redirect
+  matrix, status, `noindex` / `X-Robots-Tag` / snippet restrictions, title / description / `lang` /
+  viewport / Open Graph / heading order, canonical, mixed content, **text and key data visible
+  without JavaScript**, images (alt, dimensions), **JSON-LD** (validity, types, required/recommended
+  properties, consistency with visible text, types Google no longer shows as rich results),
+  **hreflang** (codes, self-reference, reciprocity, canonical of each language version), robots.txt,
+  sitemap, llms.txt (informational), soft-404 test, and **AI crawler access**: per-bot robots.txt
+  policy (training vs. search vs. user-triggered fetch) and one diagnostic request per allowed bot
+  User-Agent to spot likely WAF/CDN blocks or HTTP 402 pay-per-crawl (an indication, not proof).
+  Category scores plus a 0–100 overall score; header hygiene is reported but not scored.
+- Optional **quick pass** on the other candidates (status, title, `noindex`, text without JS, login detection).
+- Not measurable from outside and stated in the report: indexed pages, rankings/CTR, backlinks,
+  business profiles, real AI citations, actual bot traffic.
+
 Results are filterable (host / IP / ASN / service, and live / exposed / takeover / dead), each finding
 has a **hover tooltip** explaining what it is, and everything is exportable to **CSV / JSON**. A
 **relationship graph** (domain ↔ host ↔ IP ↔ ASN) is one click away.
@@ -93,6 +114,8 @@ python -m app.cli scan example.com --active --ports full --intensity normal --br
 
 - `POST /api/scan` — start a passive scan `{domain}` → `{id}`
 - `POST /api/scan/{id}/active` — start the active phase `{ports, custom_ports, intensity, brute, allow_private}`
+- `GET /api/scan/{id}/seo/candidates` — ranked SEO candidates + exclusions (no network requests)
+- `POST /api/scan/{id}/seo` — SEO / AI visibility audit `{full: [url…], quick: [url…]}` (max 10 full, 30 quick)
 - `GET /api/scan/{id}` — status + results (for polling)
 - `GET /api/scans` — recent scans · `GET /api/version`
 - `POST /api/scan/{id}/cancel` · `DELETE /api/scan/{id}`

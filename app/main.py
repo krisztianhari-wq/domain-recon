@@ -21,7 +21,7 @@ from fastapi import Body, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import __version__, engine, orgip, report
+from . import __version__, engine, orgip, report, seocheck
 from .db import DB
 from .ports import resolve_profile
 
@@ -423,6 +423,64 @@ async def api_scan_svc(scan_id: str):
         raise HTTPException(409, "A kitett-eszköz-felderítés már fut.")
     engine.start_svc(db, scan_id)
     return {"id": scan_id, "svc": "running"}
+
+
+@app.get("/api/scan/{scan_id}/seo/candidates")
+async def api_seo_candidates(scan_id: str):
+    """SEO-jelöltlista a leltárból (új kérés nélkül): rangsor, indoklás, kizártak oka."""
+    s = db.get_scan(scan_id)
+    if not s:
+        raise HTTPException(404, "Nincs ilyen vizsgálat.")
+    out = seocheck.candidates(db.hosts(scan_id), s.get("domain") if (s.get("opts") or {}).get("target_kind", "domain") == "domain" else "")
+    out.update({"max_full": seocheck.MAX_FULL, "max_quick": seocheck.MAX_QUICK})
+    return out
+
+
+def _seo_url(raw: str, allowed: set[str], domain: str) -> str | None:
+    """Csak a leltárban szereplő vagy a vizsgált domain alá tartozó host, http(s), útvonal nélkül vagy azzal."""
+    u = (raw or "").strip()[:500]
+    if not re.match(r"^https?://", u, re.I):
+        u = "https://" + u
+    from urllib.parse import urlsplit
+    sp = urlsplit(u)
+    host = (sp.hostname or "").lower().rstrip(".")
+    if not host or not HOST_RE.match(host):
+        return None
+    if host not in allowed and not (domain and (host == domain or host.endswith("." + domain))):
+        return None
+    path = sp.path or "/"
+    return f"{sp.scheme.lower()}://{host}{(':' + str(sp.port)) if sp.port else ''}{path}"
+
+
+@app.post("/api/scan/{scan_id}/seo")
+async def api_scan_seo(scan_id: str, payload: dict = Body(default={})):
+    """Önálló fázis: SEO / AI-láthatóság. payload: {full: [url…], quick: [url…]} – a jelöltlistából választva
+    vagy kézzel (csak a leltár / a vizsgált domain hostjai). Teljes audit legfeljebb MAX_FULL, gyors MAX_QUICK."""
+    s = db.get_scan(scan_id)
+    if not s:
+        raise HTTPException(404, "Nincs ilyen vizsgálat.")
+    if s["status"] in ("queued", "running"):
+        raise HTTPException(409, "A passzív fázis még fut.")
+    if s.get("seo_status") in ("queued", "running"):
+        raise HTTPException(409, "A SEO-vizsgálat már fut.")
+    allowed = {h["host"].lower() for h in db.hosts(scan_id)}
+    domain = s.get("domain") if (s.get("opts") or {}).get("target_kind", "domain") == "domain" else ""
+    full, quick, bad = [], [], []
+    for key, dst in (("full", full), ("quick", quick)):
+        for raw in (payload or {}).get(key) or []:
+            u = _seo_url(str(raw), allowed, domain)
+            if u is None:
+                bad.append(str(raw)[:80])
+            elif u not in full and u not in quick:
+                dst.append(u)
+    if bad:
+        raise HTTPException(400, "Csak a leltár vagy a vizsgált domain hostjai auditálhatók: " + ", ".join(bad[:5]))
+    if not full and not quick:
+        raise HTTPException(400, "Nincs kiválasztott webhely.")
+    if len(full) > seocheck.MAX_FULL or len(quick) > seocheck.MAX_QUICK:
+        raise HTTPException(400, f"Legfeljebb {seocheck.MAX_FULL} teljes és {seocheck.MAX_QUICK} gyors audit.")
+    engine.start_seo(db, scan_id, full, quick)
+    return {"id": scan_id, "seo": "running", "full": full, "quick": quick}
 
 
 @app.post("/api/scan/{scan_id}/subdomains")

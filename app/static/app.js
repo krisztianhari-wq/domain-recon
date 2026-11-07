@@ -266,7 +266,7 @@ async function tick() {
   try { s = await (await fetch(`/api/scan/${current}`, {cache: "no-store"})).json(); }
   catch (e) { return; }
   scan = s; hosts = s.hosts || [];
-  renderProgress(s); renderActive(s); renderCve(s); renderSvc(s); renderSubdomains(s); renderStats(); renderPosture(s); renderHosts();
+  renderProgress(s); renderActive(s); renderCve(s); renderSvc(s); renderSeo(s); renderSubdomains(s); renderStats(); renderPosture(s); renderHosts();
   $("#md").href = `/report?id=${current}&lang=${LANG}`;   // nyomtatható PDF-jelentés (a UI nyelvén)
   $("#md").target = "_blank";
   $("#xlsx").href = `/api/export/${current}.xlsx`;
@@ -278,7 +278,8 @@ async function tick() {
   const cveIdle = !["queued", "running"].includes(s.cve_status);
   const svcIdle = !["queued", "running"].includes(s.svc_status);
   const subIdle = !["queued", "running"].includes(s.sub_status);
-  if (passiveDone && activeIdle && cveIdle && svcIdle && subIdle) { stopPoll(); $("#go").disabled = false; $("#activego").disabled = false; $("#cvego").disabled = false; $("#svcgo").disabled = false; $("#subgo").disabled = false; loadHistory(); }
+  const seoIdle = !["queued", "running"].includes(s.seo_status);
+  if (passiveDone && activeIdle && cveIdle && svcIdle && subIdle && seoIdle) { stopPoll(); $("#go").disabled = false; $("#activego").disabled = false; $("#cvego").disabled = false; $("#svcgo").disabled = false; $("#seogo").disabled = false; $("#subgo").disabled = false; loadHistory(); }
 }
 
 function renderCve(s) {
@@ -661,7 +662,7 @@ async function openScan(id) {
 
 function resetView() {
   current = null; stopPoll();
-  ["results", "stats", "progcard", "posture", "activecard", "cvecard", "svccard", "subcard"].forEach(id => $("#" + id).classList.add("hide"));
+  ["results", "stats", "progcard", "posture", "activecard", "cvecard", "svccard", "seocard", "subcard"].forEach(id => $("#" + id).classList.add("hide"));
 }
 
 // ---- vezérlők ----
@@ -675,6 +676,9 @@ $("#orgq").addEventListener("keydown", e => { if (e.key === "Enter") orgSearch()
 $("#activego").addEventListener("click", startActive);
 $("#cvego").addEventListener("click", startCve);
 $("#svcgo").addEventListener("click", startSvc);
+$("#seogo").addEventListener("click", startSeo);
+$("#seoadd").addEventListener("click", addSeoUrl);
+$("#seourl").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); addSeoUrl(); } });
 $("#subgo").addEventListener("click", startSubdomains);
 $("#filter").addEventListener("input", renderHosts);
 $("#cancel").addEventListener("click", async () => { if (current) await fetch(`/api/scan/${current}/cancel`, {method: "POST"}); });
@@ -687,3 +691,126 @@ applyStatic();
 loadHistory();
 const h = location.hash.replace("#", "");
 if (/^[0-9a-f]{16}$/.test(h)) openScan(h);
+
+// ---------------------------------------------------------------- SEO / AI-láthatóság
+let seoCands = null, seoCandKey = "", seoManual = [], seoChecked = null;
+
+async function loadSeoCands(s) {
+  const key = `${current}:${s.active_status}:${s.n_hosts}:${s.sub_status}`;
+  if (key === seoCandKey) return;
+  seoCandKey = key;
+  try {
+    const r = await fetch(`/api/scan/${current}/seo/candidates`);
+    seoCands = r.ok ? await r.json() : {candidates: [], excluded: []};
+  } catch (e) { seoCands = {candidates: [], excluded: []}; }
+  if (seoChecked === null || !seoChecked.size) seoChecked = new Set(seoCands.candidates.filter(c => c.default).map(c => c.url));
+  renderSeoCands();
+}
+
+function renderSeoCands() {
+  if (!seoCands) return;
+  const box = $("#seocands");
+  const rows = seoCands.candidates.map(c => {
+    const rs = (LANG === "en" ? c.reasons_en : c.reasons) || [];
+    const mem = c.members && c.members.length ? ` <span class="muted">· ${t("seo_members")}: ${esc(c.members.slice(0, 4).join(", "))}${c.members.length > 4 ? "…" : ""}</span>` : "";
+    return `<label class="seocand"><input type="checkbox" data-url="${esc(c.url)}"${seoChecked.has(c.url) ? " checked" : ""}>
+      <span class="seoh">${esc(c.host)}</span><span class="tag">${c.score} ${t("seo_score")}</span>
+      <span class="muted seor">${esc(rs.join(" · "))}</span>${mem}</label>`;
+  });
+  seoManual.forEach(u => rows.push(`<label class="seocand"><input type="checkbox" data-url="${esc(u)}"${seoChecked.has(u) ? " checked" : ""}><span class="seoh">${esc(u)}</span><span class="tag">${t("seo_manual")}</span></label>`));
+  box.innerHTML = `<p class="sub">${t("seo_cands")}</p>` + (rows.length ? rows.join("") : `<p class="muted">${t("seo_nocands")}</p>`);
+  box.querySelectorAll("input[data-url]").forEach(cb => cb.addEventListener("change", () => {
+    if (cb.checked) seoChecked.add(cb.dataset.url); else seoChecked.delete(cb.dataset.url);
+  }));
+  const ex = seoCands.excluded || [];
+  $("#seoexcl").classList.toggle("hide", !ex.length);
+  $("#seoexcllist").innerHTML = ex.map(x => `<li><b>${esc(x.host)}</b> – ${esc(LANG === "en" ? x.why_en : x.why)}</li>`).join("");
+  $("#seoexcl").querySelector("summary").textContent = `${t("seo_excl_sum")} (${ex.length})`;
+}
+
+function addSeoUrl() {
+  let u = $("#seourl").value.trim();
+  if (!u) return;
+  if (!/^https?:\/\//i.test(u)) u = "https://" + u;
+  try { const x = new URL(u); u = x.origin + (x.pathname || "/"); } catch (e) { alert(t("err_start")); return; }
+  if (!seoManual.includes(u)) seoManual.push(u);
+  seoChecked.add(u);
+  $("#seourl").value = "";
+  renderSeoCands();
+}
+
+async function startSeo() {
+  if (!current) return;
+  const full = [...(seoChecked || [])];
+  if (!full.length) { alert(t("seo_none_sel")); return; }
+  const max = (seoCands && seoCands.max_full) || 10, maxq = (seoCands && seoCands.max_quick) || 30;
+  if (full.length > max) { alert(`${t("seo_too_many")}: ${full.length} / ${max}`); return; }
+  const quick = $("#seoquick").checked && seoCands ? seoCands.candidates.map(c => c.url).filter(u => !full.includes(u)).slice(0, maxq) : [];
+  $("#seogo").disabled = true;
+  try {
+    const r = await fetch(`/api/scan/${current}/seo`, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({full, quick})});
+    if (!r.ok) { const e = await r.json().catch(() => ({})); alert(e.detail || t("err_start")); $("#seogo").disabled = false; return; }
+    $("#seoprog").classList.remove("hide");
+    startPoll();
+  } catch (e) { alert(t("err_start")); $("#seogo").disabled = false; }
+}
+
+function renderSeo(s) {
+  const passiveDone = ["done", "error", "canceled"].includes(s.status);
+  const show = passiveDone && s.status !== "error";
+  $("#seocard").classList.toggle("hide", !show);
+  if (!show) return;
+  if (seoCandKey && !seoCandKey.startsWith(current + ":")) { seoChecked = null; seoManual = []; }
+  loadSeoCands(s);
+  const running = ["queued", "running"].includes(s.seo_status);
+  $("#seogo").disabled = running;
+  $("#seogo").textContent = running ? t("seo_running") : (s.seo_status === "done" ? t("seo_done") + " · " + t("seo_go") : t("seo_go"));
+  $("#seoprog").classList.toggle("hide", !running);
+  if (running) {
+    const pct = s.seo_total ? Math.round(s.seo_done / s.seo_total * 100) : 0;
+    $("#soprogbar").querySelector("i").style.width = pct + "%";
+    $("#sostage").textContent = t("seo_scanning") + (s.seo_stage && s.seo_stage.includes(":") ? " · " + s.seo_stage.split(":")[1] : "");
+    $("#soprogtxt").textContent = `${s.seo_done || 0} / ${s.seo_total || 0}`;
+  }
+  $("#seores").innerHTML = s.seo ? seoResultsHtml(s.seo) : "";
+}
+
+function seoFinding(f) {
+  const ev = fl(f, "evidence");
+  return `<li><span class="bdg ${SEVCLS[f.severity] || ""}">${esc(f.severity)}</span> ${esc(fl(f, "title"))}${ev ? ` <span class="muted">– ${esc(ev)}</span>` : ""}</li>`;
+}
+
+function seoResultsHtml(seo) {
+  let h = "";
+  (seo.sites || []).forEach(site => {
+    const sc = site.score || {};
+    const cls = sc.overall >= 85 ? "ok" : sc.overall >= 60 ? "warn" : "bad";
+    const cats = Object.entries(sc.by_cat || {}).map(([k, v]) => `<span class="tag ${v >= 85 ? "" : v >= 60 ? "warn" : "bad"}">${t("seo_cat_" + k)} ${v}</span>`).join(" ");
+    const fa = site.facts || {};
+    const ff = (site.findings || []).filter(f => f.severity !== "info");
+    const info = (site.findings || []).filter(f => f.severity === "info");
+    const bots = fa.ai_bots ? `<details class="cveinfo"><summary>${t("seo_bots")}</summary><ul class="cveinfo-list">` +
+      fa.ai_bots.robots.map(b => {
+        const p = (fa.ai_bots.probes || []).find(x => x.bot === b.bot);
+        return `<li><b>${esc(b.bot)}</b> (${esc(b.vendor)}, ${t("seo_p_" + b.purpose)}) – ${b.allowed ? t("seo_robots_ok") : t("seo_robots_no")}${p ? ` · HTTP ${esc(p.status)} · ${t("seo_v_" + p.verdict)}` : ""}</li>`;
+      }).join("") + `</ul></details>` : "";
+    h += `<div class="seosite"><div class="seohead"><b>${esc(site.final_url || site.url)}</b>
+      ${sc.overall != null ? `<span class="bdg ${cls}">${sc.overall} / 100</span>` : ""}
+      <span class="muted">${fa.words_nojs != null ? esc(fa.words_nojs) + " " + t("seo_words") + " · " : ""}${site.requests || 0} ${t("seo_req")}</span></div>
+      ${site.error ? `<p class="bad">${esc(site.error)}</p>` : ""}
+      <div class="seocats">${cats}</div>
+      <p class="sub">${t("seo_findings")}</p>
+      <ul class="seofind">${ff.length ? ff.map(seoFinding).join("") : `<li class="muted">${t("seo_nofind")}</li>`}${info.map(seoFinding).join("")}</ul>
+      ${bots}</div>`;
+  });
+  if ((seo.quick || []).length) {
+    h += `<div class="seosite"><div class="seohead"><b>${t("seo_quick_res")}</b></div><ul class="seofind">` +
+      seo.quick.map(q => {
+        const fa = q.facts || {};
+        const issues = (q.findings || []).map(f => esc(fl(f, "title"))).join(" · ");
+        return `<li><b>${esc(q.final_url || q.url)}</b> <span class="muted">HTTP ${esc(fa.status ?? fa.error ?? "?")} · ${esc(fa.title || "–")} · ${esc(fa.words_nojs ?? "?")} ${t("seo_words")}</span>${issues ? ` – <span class="warn">${issues}</span>` : ""}</li>`;
+      }).join("") + `</ul></div>`;
+  }
+  if (h) h += `<p class="muted seonote">${t("seo_notmeasured")}</p>`;
+  return h;
+}

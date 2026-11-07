@@ -98,7 +98,10 @@ async def probe_http(host: str, ip: str, port: int, tls: bool, timeout: float = 
     from . import enrich                         # technológia-ujjlenyomat (fejléc + törzs)
     tech = enrich.detect_tech(headers, body_txt)
     return {"scheme": scheme, "status": status, "server": server, "title": title or None,
-            "powered_by": headers.get("x-powered-by"), "tech": tech}
+            "powered_by": headers.get("x-powered-by"), "tech": tech,
+            # a SEO-jelöltszűréshez: hova irányít, és HTML-e a válasz
+            "location": (headers.get("location") or "")[:300] or None,
+            "ctype": (headers.get("content-type") or "").split(";")[0].strip().lower()[:80] or None}
 
 
 async def probe_tls(host: str, ip: str, port: int, timeout: float = 6.0) -> dict | None:

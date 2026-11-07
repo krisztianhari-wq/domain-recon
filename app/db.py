@@ -37,6 +37,11 @@ CREATE TABLE IF NOT EXISTS scans(
   svc_stage  TEXT,
   svc_done   INTEGER DEFAULT 0,
   svc_total  INTEGER DEFAULT 0,
+  seo_status TEXT DEFAULT 'none',    -- külön indítható SEO / AI-láthatóság fázis: none|queued|running|done|error|canceled
+  seo_stage  TEXT,
+  seo_done   INTEGER DEFAULT 0,
+  seo_total  INTEGER DEFAULT 0,
+  seo       TEXT,                   -- JSON: SEO-eredmény (webhelyenként, domain-szintű)
   posture   TEXT,                   -- JSON: apex DNS-posture (MX/NS/SPF/DMARC/CAA/DKIM)
   wildcard  TEXT,                   -- JSON: wildcard-IP-k
   n_hosts   INTEGER DEFAULT 0,
@@ -82,6 +87,8 @@ class DB:
             "sub_done": "INTEGER DEFAULT 0", "sub_total": "INTEGER DEFAULT 0",
             "svc_status": "TEXT DEFAULT 'none'", "svc_stage": "TEXT",
             "svc_done": "INTEGER DEFAULT 0", "svc_total": "INTEGER DEFAULT 0",
+            "seo_status": "TEXT DEFAULT 'none'", "seo_stage": "TEXT",
+            "seo_done": "INTEGER DEFAULT 0", "seo_total": "INTEGER DEFAULT 0", "seo": "TEXT",
         }
         for col, decl in add.items():
             if col not in have:
@@ -99,7 +106,8 @@ class DB:
                     "note", "active_status", "active_stage", "active_done", "active_total",
                     "cve_status", "cve_stage", "cve_done", "cve_total",
                     "sub_status", "sub_stage", "sub_done", "sub_total",
-                    "svc_status", "svc_stage", "svc_done", "svc_total"}
+                    "svc_status", "svc_stage", "svc_done", "svc_total",
+                    "seo_status", "seo_stage", "seo_done", "seo_total"}
 
     def set_status(self, scan_id: str, status: str, **fields) -> None:
         cols, vals = ["status"], [status]
@@ -144,6 +152,15 @@ class DB:
                          (stage, done, total, scan_id))
         self._cx.commit()
 
+    def set_seo_progress(self, scan_id: str, stage: str, done: int, total: int) -> None:
+        self._cx.execute("UPDATE scans SET seo_stage=?,seo_done=?,seo_total=? WHERE id=?",
+                         (stage, done, total, scan_id))
+        self._cx.commit()
+
+    def set_seo(self, scan_id: str, seo: dict) -> None:
+        self._cx.execute("UPDATE scans SET seo=? WHERE id=?", (json.dumps(seo), scan_id))
+        self._cx.commit()
+
     def set_posture(self, scan_id: str, posture: dict) -> None:
         self._cx.execute("UPDATE scans SET posture=? WHERE id=?", (json.dumps(posture), scan_id))
         self._cx.commit()
@@ -165,6 +182,7 @@ class DB:
         d["opts"] = json.loads(d["opts"])
         d["posture"] = json.loads(d["posture"]) if d.get("posture") else None
         d["wildcard"] = json.loads(d["wildcard"]) if d.get("wildcard") else []
+        d["seo"] = json.loads(d["seo"]) if d.get("seo") else None
         return d
 
     def recent_scans(self, limit: int = 40) -> list[dict]:
