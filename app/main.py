@@ -276,7 +276,9 @@ async def api_orgip(request: Request):
         raise HTTPException(400, "Adj meg céget, ASN-t vagy domaint.")
     rirs = [x.strip() for x in (request.query_params.get("rirs") or "ripe,arin,peeringdb").split(",") if x.strip()]
     try:
-        return await asyncio.wait_for(orgip.discover(q, rirs), timeout=50)
+        res = await asyncio.wait_for(orgip.discover(q, rirs), timeout=50)
+        res["scan_cap"] = _MAX_TARGET_IPS      # a kliens ebből számol „kiválasztva / szkennelhető" arányt
+        return res
     except asyncio.TimeoutError:
         raise HTTPException(504, "A forráslekérdezés időtúllépés. Próbáld újra, vagy adj meg ASN-t közvetlenül.")
 

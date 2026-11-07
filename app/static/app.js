@@ -120,25 +120,83 @@ async function orgSearch() {
   finally { $("#orgsearch").disabled = false; }
 }
 
+// jelleg (kind) → alapból bejelölve? (fix/kiosztott/ismeretlen igen; dinamikus/szülő nem)
+const ORG_KIND_UNCHECK = {dynamic: 1, allocation: 1, aggregate: 1};
+let ORG_CAP = 750;
+
+function orgKindTag(kind) {
+  if (kind === "fixed")      return `<span class="tag fix">${t("ok_fixed")}</span>`;
+  if (kind === "dynamic")    return `<span class="tag dyn">${t("ok_dynamic")}</span>`;
+  if (kind === "allocation") return `<span class="tag alloc">${t("ok_alloc")}</span>`;
+  if (kind === "aggregate")  return `<span class="tag alloc">${t("ok_agg")}</span>`;
+  if (kind === "assigned")   return `<span class="tag">${t("ok_assigned")}</span>`;
+  return "";
+}
+
+// egy prefix szkennelhető hoszt-száma (IPv4 pontos; IPv6 gyakorlatilag végtelen)
+function prefixHosts(cidr) {
+  const parts = String(cidr).split("/");
+  if (parts.length < 2) return 1;
+  if (cidr.includes(":")) return Infinity;
+  const bits = 32 - parseInt(parts[1], 10);
+  if (!(bits > 0)) return 1;
+  const n = Math.pow(2, bits);
+  return bits >= 2 ? n - 2 : n;          // hálózat/broadcast levonva
+}
+
+function updateOrgRatio() {
+  const el = $("#orgratio"); if (!el) return;
+  let total = 0;
+  $$(".orgpfx").forEach(c => { if (c.checked) total += prefixHosts(c.value); });
+  const scanned = Math.min(total, ORG_CAP);
+  const totTxt = total === Infinity ? t("org_many") : total.toLocaleString();
+  el.textContent = t("org_ratio").replace("{sel}", totTxt).replace("{scan}", scanned.toLocaleString()).replace("{cap}", ORG_CAP.toLocaleString());
+  el.classList.toggle("warn", total > ORG_CAP);
+}
+
 function renderOrgResult(d) {
   const res = $("#orgresult");
   const pfx = d.prefixes || [];
+  ORG_CAP = d.scan_cap || 750;
   const orgs = (d.orgs || []).map(o => `<span class="tag">${esc(o.handle)}${o.name ? " · " + esc(o.name) : ""} (${esc(o.source)})</span>`).join(" ");
   const asns = (d.asns || []).map(a => `<span class="tag">${esc(a.asn)}${a.name ? " " + esc(a.name) : ""}</span>`).join(" ");
   res.classList.remove("hide");
   if (!pfx.length) { res.innerHTML = `${orgs || asns ? `<div class="kv">${orgs} ${asns}</div>` : ""}<p class="empty">${t("org_none")}</p>`; return; }
-  const rows = pfx.map(p => `<label class="orgrow"><input type="checkbox" class="orgpfx" value="${esc(p.prefix)}" checked>
-    <span class="m">${esc(p.prefix)}</span><span class="hd">${esc(p.netname || p.source || "")}${p.cc ? " · " + esc(p.cc) : ""}</span></label>`).join("");
+  const rows = pfx.map(p => {
+    const kind = p.kind || "unknown";
+    const checked = ORG_KIND_UNCHECK[kind] ? "" : "checked";
+    return `<label class="orgrow" data-kind="${esc(kind)}"><input type="checkbox" class="orgpfx" value="${esc(p.prefix)}" ${checked}>
+    <span class="m">${esc(p.prefix)}</span>${orgKindTag(kind)}<span class="hd">${esc(p.netname || p.source || "")}${p.cc ? " · " + esc(p.cc) : ""}</span></label>`;
+  }).join("");
   const notes = (d.notes || []).map(n => `<p class="note">${esc(n)}</p>`).join("");
   res.innerHTML = `
     ${orgs ? `<div class="kv"><b>${t("org_orgs")}:</b> ${orgs}</div>` : ""}
     ${asns ? `<div class="kv"><b>ASN:</b> ${asns}</div>` : ""}
     <div class="kv" style="align-items:center;gap:8px;flex-wrap:wrap"><b>${t("org_prefixes")} (${pfx.length}):</b>
       <button class="btn" id="orgall" type="button">${t("org_all")}</button>
-      <button class="btn primary go" id="orgscan" type="button">${t("org_scan")}</button></div>
+      <button class="btn primary go" id="orgscan" type="button">${t("org_scan")}</button>
+      <span id="orgratio" class="hd"></span></div>
+    <div class="pills orgfilter">
+      <button type="button" data-k="all" class="on">${t("org_f_all")}</button>
+      <button type="button" data-k="fixed">${t("org_f_fixed")}</button>
+      <button type="button" data-k="dynamic">${t("org_f_dyn")}</button>
+      <button type="button" data-k="parent">${t("org_f_parent")}</button>
+    </div>
+    <p class="note orgcaveat">${t("org_caveat")}</p>
     <div class="orglist">${rows}</div>${notes}`;
-  $("#orgall").addEventListener("click", () => { const cbs = $$(".orgpfx"); const on = cbs.every(c => c.checked); cbs.forEach(c => c.checked = !on); });
+  $("#orgall").addEventListener("click", () => { const cbs = $$(".orgpfx"); const on = cbs.every(c => c.checked); cbs.forEach(c => c.checked = !on); updateOrgRatio(); });
   $("#orgscan").addEventListener("click", orgScan);
+  $$(".orgpfx").forEach(c => c.addEventListener("change", updateOrgRatio));
+  $$(".orgfilter button").forEach(b => b.addEventListener("click", () => {
+    $$(".orgfilter button").forEach(x => x.classList.toggle("on", x === b));
+    const k = b.dataset.k;
+    $$(".orgrow").forEach(r => {
+      const rk = r.dataset.kind;
+      const show = k === "all" || rk === k || (k === "parent" && (rk === "allocation" || rk === "aggregate"));
+      r.classList.toggle("hide", !show);
+    });
+  }));
+  updateOrgRatio();
 }
 
 function orgScan() {

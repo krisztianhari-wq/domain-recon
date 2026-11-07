@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
+import json
+import os
 import re
 
 import httpx
@@ -21,6 +23,49 @@ import httpx
 UA = "sadrobot org-ip discovery"
 _TIMEOUT = 25
 _MAX_PREFIXES = 2000          # védelmi felső korlát a visszaadott prefixekre
+
+# Netname-alapú pool-osztályozás (jelleg). KONFIGURÁLHATÓ: a RECON_POOL_PATTERNS env egy JSON-lista
+# ([["minta","kind"], ...], ahol kind = dynamic|fixed); ezek a beépített minták ELÉ kerülnek, így
+# felülírhatók más operátorok konvenciói. A netname-ben keresünk (kis/nagybetű nem számít).
+# FONTOS: a jelleg operátor által karbantartott registry-jelzés, NEM bizonyít mobilt/lakosságit/CGNAT-ot.
+_DEFAULT_POOL_PATTERNS = [
+    (r"dynamic|dynpool|-dyn-|-dsl-|-pool|pppoe|-mobile|-mob-|-cgn|cgnat|residential|-res-|customer", "dynamic"),
+    (r"-fixed|-static|-stat-|-biz|business|-corp|-leased|-dedicated|-srv|-hosting", "fixed"),
+]
+
+
+def _pool_patterns() -> list[tuple[re.Pattern, str]]:
+    pats: list[tuple[str, str]] = []
+    raw = os.getenv("RECON_POOL_PATTERNS", "")
+    if raw:
+        try:
+            for item in json.loads(raw):
+                if isinstance(item, (list, tuple)) and len(item) == 2:
+                    pats.append((str(item[0]), str(item[1])))
+        except Exception:  # noqa: BLE001
+            pass
+    pats += _DEFAULT_POOL_PATTERNS
+    return [(re.compile(p, re.I), k) for p, k in pats]
+
+
+_POOL_RE = _pool_patterns()
+
+
+def _classify(netname: str, status: str) -> str:
+    """Prefix-rekord jellege a RIPE netname + status alapján. Csak jelzés, nem bizonyíték.
+    dynamic/fixed a netname-mintából; allocation/aggregate/assigned a RIPE státuszból; különben unknown."""
+    nn = netname or ""
+    for rx, kind in _POOL_RE:
+        if rx.search(nn):
+            return kind
+    s = (status or "").upper()
+    if s.startswith("ALLOCATED"):
+        return "allocation"
+    if "AGGREGATED" in s:
+        return "aggregate"
+    if s.startswith("ASSIGNED"):
+        return "assigned"
+    return "unknown"
 
 
 def _client() -> httpx.AsyncClient:
@@ -80,11 +125,11 @@ async def ripe_resources(client: httpx.AsyncClient, handle: str) -> dict:
             for cidr in _range_to_cidrs(start.strip(), end.strip()):
                 prefixes.append({"prefix": cidr, "source": "RIPE whois",
                                  "netname": a.get("netname", ""), "cc": a.get("country", ""),
-                                 "descr": a.get("descr", "")})
+                                 "descr": a.get("descr", ""), "status": a.get("status", "")})
         elif t == "inet6num" and a.get("inet6num"):
             prefixes.append({"prefix": a["inet6num"], "source": "RIPE whois",
                              "netname": a.get("netname", ""), "cc": a.get("country", ""),
-                             "descr": a.get("descr", "")})
+                             "descr": a.get("descr", ""), "status": a.get("status", "")})
         elif t == "aut-num" and a.get("aut-num"):
             asns.append({"asn": a["aut-num"], "name": a.get("as-name", ""), "source": "RIPE"})
     return {"prefixes": prefixes, "asns": asns}
@@ -284,12 +329,28 @@ async def discover(query: str, rirs: list[str] | None = None) -> dict:
             if not a.get("name"):
                 a["name"] = await asn_holder(client, a["asn"])
 
-    # dedup prefix (az első forrást megtartva)
+    # a legjobb netname/status/ország összegyűjtése prefixenként: a BGP-sor üres, a RIPE-sor nem – egyesítjük,
+    # hogy a BGP-ben meghirdetett /16–/18 is megkapja a RIPE-címkéjét (jelleg-osztályozáshoz)
+    merged: dict[str, dict] = {}
+    for p in prefixes:
+        e = merged.setdefault(p["prefix"], {})
+        for f in ("netname", "cc", "descr", "status"):
+            if not e.get(f) and p.get(f):
+                e[f] = p[f]
+
+    # dedup prefix (az első forrást megtartva), netname/status-szal gazdagítva + jelleg (kind)
     seen, uniq = set(), []
     for p in prefixes:
-        if p["prefix"] not in seen:
-            seen.add(p["prefix"])
-            uniq.append(p)
+        if p["prefix"] in seen:
+            continue
+        seen.add(p["prefix"])
+        e = merged.get(p["prefix"], {})
+        for f in ("netname", "cc", "descr", "status"):
+            if not p.get(f) and e.get(f):
+                p[f] = e[f]
+        p.setdefault("status", "")
+        p["kind"] = _classify(p.get("netname", ""), p.get("status", ""))
+        uniq.append(p)
         if len(uniq) >= _MAX_PREFIXES:
             notes.append(f"{len(prefixes)} prefix → az első {_MAX_PREFIXES} megtartva.")
             break
