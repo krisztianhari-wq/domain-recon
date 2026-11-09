@@ -34,7 +34,7 @@ from . import probe_services
 from . import pqscan
 from . import seocheck
 from . import sources
-from . import vulncheck
+from . import oidccheck, vulncheck
 from .ports import EXPECTED_WEB, TLS_PORTS, resolve_profile, svc
 
 UA = "domain-recon/0.2 (+sadrobot; attack-surface mapping)"
@@ -403,6 +403,14 @@ class Engine:
                                     client, host, ips[0], [p["port"] for p in ports_out], timeout=self.ftimeout)
                             except Exception:  # noqa: BLE001
                                 d["vuln"] = []
+                            # app-higiénia (OIDC-metaadat + security-fejlécek/cookie + opc. open-redirect)
+                            try:
+                                extra = await oidccheck.app_findings(
+                                    client, host, ips[0], [p["port"] for p in ports_out], timeout=self.ftimeout)
+                                if extra:
+                                    d.setdefault("vuln", []).extend(extra)
+                            except Exception:  # noqa: BLE001
+                                pass
                             # kvantum-reziliencia a TLS-portra (443 előnyben), ha van
                             tls_open = [p["port"] for p in ports_out if p["port"] in TLS_PORTS]
                             if tls_open:
