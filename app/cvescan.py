@@ -76,6 +76,11 @@ def _apache_findings(server: str) -> list[dict]:
                       "Apache mod_proxy SSRF", "Apache mod_proxy SSRF",
                       f"Apache {vs} — javítva: 2.4.49 (mod_proxy esetén)",
                       f"Apache {vs} — fixed: 2.4.49 (mod_proxy only)", "version"))
+    if (2, 4, 55) <= ver <= (2, 4, 70):
+        out.append(_f("apache-http2-rce", "CVE-2026-119618", "high",
+                      "Apache mod_http2 heap-RCE (ha HTTP/2 aktív)", "Apache mod_http2 heap RCE (if HTTP/2 enabled)",
+                      f"Apache {vs} — javítva: 2.4.71 (csak ha mod_http2 + h2/h2c engedélyezett)",
+                      f"Apache {vs} — fixed: 2.4.71 (only if mod_http2 + h2/h2c enabled)", "version"))
     return out
 
 
@@ -108,8 +113,8 @@ async def _confluence(client, base: str, out: list):
     m = _CONF_VER.search(body)
     if not m:
         out.append(_f("confluence", "—", "info", "Atlassian Confluence észlelve", "Atlassian Confluence detected",
-                      "verzió nem olvasható ki – ellenőrizd a CVE-2022-26134 / CVE-2023-22515 ellen",
-                      "version not readable – check against CVE-2022-26134 / CVE-2023-22515", "fingerprint"))
+                      "verzió nem olvasható ki – ellenőrizd a CVE-2022-26134 / CVE-2023-22515 / CVE-2026-90436 ellen",
+                      "version not readable – check against CVE-2022-26134 / CVE-2023-22515 / CVE-2026-90436", "fingerprint"))
         return
     ver = tuple(int(x) for x in m.groups()); vs = ".".join(map(str, ver)); branch = ver[:2]
     f1 = _CONF_26134_FIXED.get(branch)
@@ -124,6 +129,19 @@ async def _confluence(client, base: str, out: list):
         out.append(_f("confluence-authbypass", "CVE-2023-22515", "critical",
                       "Confluence jogosultság-megkerülés", "Confluence broken access control",
                       f"Confluence {vs} — javítva: {fx}", f"Confluence {vs} — fixed: {fx}", "fingerprint"))
+    # CVE-2026-90436 (Apache Axis / Remote API, aktívan kihasználva): 10.x nem érintett, javítva 9.2.28
+    if ver < (9, 2, 28):
+        out.append(_f("confluence-axis-rce", "CVE-2026-90436", "high",
+                      "Confluence Axis/Remote API RCE (ha a Remote API aktív)",
+                      "Confluence Axis/Remote API RCE (if Remote API enabled)",
+                      f"Confluence {vs} — javítva: 9.2.28 (10.x nem érintett; csak ha a Remote API (XML-RPC/SOAP) be van kapcsolva)",
+                      f"Confluence {vs} — fixed: 9.2.28 (10.x not affected; only if Remote API (XML-RPC/SOAP) enabled)", "fingerprint"))
+    # Java4Shell (CVE-2026-114938) – JVM-szintű, kívülről nem ellenőrizhető: csak emlékeztető a belső JDK-ellenőrzésre
+    out.append(_f("java4shell-hint", "CVE-2026-114938", "info",
+                  "Java-alapú (Confluence) – a bundled JDK-t belül ellenőrizd (Java4Shell)",
+                  "Java-based (Confluence) – verify the bundled JDK internally (Java4Shell)",
+                  "JDK-verzió kívülről nem látszik; javított: 17.0.21.1 / 21.0.13.1 / 25.0.5.1 / 27.0.1.1",
+                  "JDK version not externally visible; fixed: 17.0.21.1 / 21.0.13.1 / 25.0.5.1 / 27.0.1.1", "fingerprint"))
 
 
 async def fingerprint_cves(client, host: str, ports: list[int] | None = None) -> list[dict]:
