@@ -98,6 +98,23 @@ main h1{margin:0}
 .progmeta{display:flex;justify-content:space-between;font-size:12px;color:var(--color-text-secondary);flex-wrap:wrap;gap:var(--space-2)}
 .stage-chip{font-weight:600;color:var(--color-primary)}
 
+/* kontextus-sáv: mindig látszik, melyik célponttal dolgozol (a fejléc alatt ragad) */
+.ctxbar{position:sticky;top:var(--hh,52px);z-index:15;gap:var(--space-2);
+  background:color-mix(in srgb,var(--color-surface) 92%,transparent);backdrop-filter:blur(10px);
+  border:1px solid var(--color-border-strong)}
+.ctxrow{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);flex-wrap:wrap}
+.ctxid{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+.ctxkind{flex:none;font:600 11px var(--font-mono);letter-spacing:.04em;text-transform:uppercase;
+  padding:2px 8px;border-radius:var(--radius-pill);background:var(--color-neutral-soft);color:var(--color-text-secondary)}
+.ctxkind.k-domain{background:var(--color-primary-soft);color:var(--color-primary-active)}
+.ctxkind.k-list{background:var(--color-success-soft);color:var(--color-success-text)}
+.ctxkind.k-ip{background:var(--color-warning-soft);color:var(--color-warning-text)}
+:root[data-theme="dark"] .ctxkind.k-domain{color:var(--color-primary)}
+.ctxtarget{font:700 18px/1.2 var(--font);color:var(--color-text-primary);word-break:break-all}
+.ctxmeta{font:12px var(--font-mono);color:var(--color-text-muted);flex-basis:100%}
+.ctxact{display:flex;gap:var(--space-2);flex:none}
+@media (max-width:767px){.ctxtarget{font-size:16px}.ctxact{flex:1}.ctxact .btn{flex:1}}
+
 /* szűrő + eredménylista */
 #results .toolbar{justify-content:space-between}
 .filter{flex:1 1 200px;max-width:380px;width:auto}
@@ -155,6 +172,8 @@ td.m{font-family:var(--font-mono);color:var(--color-text-secondary);font-size:12
 .hist{display:flex;flex-direction:column}
 .hist a{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:var(--space-3);align-items:center;padding:10px 4px;border-top:1px solid var(--color-border);color:var(--color-text-primary)}
 .hist a:first-child{border-top:0}.hist a:hover{color:var(--color-primary)}
+.hist a.sel{background:var(--color-surface-selected);border-radius:var(--radius-md);padding-left:10px;padding-right:10px}
+.hist a.sel b{color:var(--color-primary)}
 .hist .hd{font-size:12px;color:var(--color-text-muted)}
 .hist .btn{height:32px;padding:0 var(--space-3)}
 

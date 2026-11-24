@@ -68,7 +68,7 @@ async function startScan() {
     current = s.id;
     try { history.replaceState(null, "", `#${s.id}`); } catch (e) { /* no-op */ }
     $("#results").classList.remove("hide");
-    $("#progcard").classList.remove("hide");
+    $("#ctxbar").classList.remove("hide");
     startPoll();
   } catch (e) { alert(t("err_start")); $("#go").disabled = false; }
 }
@@ -334,9 +334,25 @@ function renderSubdomains(s) {   // csak domain-leltárnál (hostlist) látható
   }
 }
 
+// A felső kontextus-sáv: mindig látszik, amíg egy vizsgálat be van töltve (indítva vagy history-ból nyitva),
+// így egyértelmű, melyik célponttal dolgozol; a haladásjelző ebbe van beágyazva.
+const KIND_CLS = {domain: "domain", hostlist: "list", ip: "ip"};
 function renderProgress(s) {
+  if (!current) { $("#ctxbar").classList.add("hide"); return; }
+  $("#ctxbar").classList.remove("hide");
+  const kind = (s.opts && s.opts.target_kind) || "domain";
+  const kc = $("#ctxkind");
+  kc.textContent = t("kind_" + kind) || kind;
+  kc.className = "ctxkind k-" + (KIND_CLS[kind] || "domain");
+  $("#ctxtarget").textContent = s.domain || "–";
+  const live = hosts.filter(h => h.alive).length;
+  const bits = [t("st_" + s.status) || s.status];
+  if (hosts.length) bits.push(`${hosts.length} host · ${live} ${t("m_live").toLowerCase()}`);
+  if (s.created) bits.push(new Date(s.created * 1000).toLocaleString(L()));
+  $("#ctxmeta").textContent = bits.join(" · ");
+
   const running = ["queued", "running"].includes(s.status);
-  $("#progcard").classList.toggle("hide", !running && s.status !== "error");
+  $("#progwrap").classList.toggle("hide", !running && s.status !== "error");
   const stageKey = "stage_" + (s.stage || "queued");
   $("#stage").textContent = running ? t(stageKey) : t("st_" + s.status);
   const bar = $("#progbar"), fill = bar.querySelector("i");
@@ -344,7 +360,7 @@ function renderProgress(s) {
   bar.classList.toggle("indet", indet);
   if (indet) { fill.style.width = "35%"; $("#progtxt").textContent = t(stageKey); }
   else { const pct = s.total ? Math.round(s.done / s.total * 100) : (s.status === "done" ? 100 : 0); fill.style.width = pct + "%"; $("#progtxt").textContent = `${s.done || 0} / ${s.total || 0}`; }
-  $("#scanmeta").textContent = esc(s.domain || "") + (s.note ? " · " + s.note : "");
+  $("#scanmeta").textContent = s.note ? s.note : "";
   $("#cancel").classList.toggle("hide", !running);
   if (s.status === "error" && s.error) $("#scanmeta").textContent = s.error;
 }
@@ -650,19 +666,28 @@ async function loadHistory() {
     if (current === b.dataset.del) resetView();
     loadHistory();
   }));
+  markHistory();
 }
 
 async function openScan(id) {
   current = id; bruteSuggested = false;
   try { history.replaceState(null, "", `#${id}`); } catch (e) { /* no-op */ }
   $("#results").classList.remove("hide");
+  $("#ctxbar").classList.remove("hide");
+  markHistory();
   startPoll();
   window.scrollTo({top: 0, behavior: "smooth"});
 }
 
+// a betöltött (aktuális) history-sor kijelölése, hogy látsszon, melyik futásban vagyunk
+function markHistory() {
+  $$("#history a[data-id]").forEach(a => a.classList.toggle("sel", a.dataset.id === current));
+}
+
 function resetView() {
   current = null; stopPoll();
-  ["results", "stats", "progcard", "posture", "activecard", "cvecard", "svccard", "seocard", "subcard"].forEach(id => $("#" + id).classList.add("hide"));
+  ["results", "stats", "ctxbar", "posture", "activecard", "cvecard", "svccard", "seocard", "subcard"].forEach(id => $("#" + id).classList.add("hide"));
+  markHistory();
 }
 
 // ---- vezérlők ----
@@ -687,6 +712,10 @@ $$(".langs button").forEach(b => b.addEventListener("click", () => { setLang(b.d
 $("#theme").addEventListener("click", () => { const r = document.documentElement, n = r.dataset.theme === "light" ? "dark" : "light"; r.dataset.theme = n; try { localStorage.setItem("theme", n); } catch (e) { /* no-op */ } });
 
 applyStatic();
+// a sticky kontextus-sáv a fejléc alá kerül; a fejléc magassága tördelődésnél változik, ezért mérjük
+function setHeaderH() { const h = document.querySelector("header.top"); if (h) document.documentElement.style.setProperty("--hh", h.offsetHeight + "px"); }
+setHeaderH();
+addEventListener("resize", setHeaderH);
 (async () => { try { const v = await (await fetch("/api/version", {cache: "no-store"})).json(); $("#ver").textContent = "v" + v.version + (v.build ? " · " + v.build : ""); } catch (e) { /* no-op */ } })();
 loadHistory();
 const h = location.hash.replace("#", "");

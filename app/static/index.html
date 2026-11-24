@@ -51,15 +51,22 @@
     </details>
   </section>
 
-  <section class="card prog hide" id="progcard">
-    <div class="row">
-      <div class="progmeta" style="flex:1">
-        <span><span class="tag">●</span> <span class="stage-chip" id="stage">–</span> · <span id="progtxt">0 / 0</span></span>
-        <span id="scanmeta"></span>
+  <section class="card ctxbar hide" id="ctxbar">
+    <div class="ctxrow">
+      <div class="ctxid">
+        <span class="ctxkind" id="ctxkind"></span>
+        <b class="ctxtarget" id="ctxtarget">–</b>
+        <span class="ctxmeta" id="ctxmeta"></span>
       </div>
-      <button class="btn danger" id="cancel" type="button" data-i18n="cancel">Megszakítás</button>
+      <div class="ctxact">
+        <button class="btn danger hide" id="cancel" type="button" data-i18n="cancel">Megszakítás</button>
+        <button class="btn" id="newscan" type="button" data-i18n="newscan">Új vizsgálat</button>
+      </div>
     </div>
-    <div class="progbar" id="progbar"><i></i></div>
+    <div class="prog hide" id="progwrap">
+      <div class="progmeta"><span><span class="stage-chip" id="stage">–</span> · <span id="progtxt">0 / 0</span></span><span id="scanmeta"></span></div>
+      <div class="progbar" id="progbar"><i></i></div>
+    </div>
   </section>
 
   <section class="kpis hide" id="stats"></section>
@@ -214,7 +221,6 @@
         <a class="btn" id="xlsx" href="#" data-i18n="col_xlsx">XLSX</a>
         <a class="btn" id="csv" href="#" data-i18n="col_export_csv">CSV</a>
         <a class="btn" id="json" href="#" data-i18n="col_export_json">JSON</a>
-        <button class="btn" id="newscan" type="button" data-i18n="newscan">Új vizsgálat</button>
       </div>
     </div>
     <div class="list" id="hostlist"></div>
