@@ -77,6 +77,37 @@
     <p class="note warn hide" id="wildcardnote"></p>
   </section>
 
+  <section class="card scanpick hide" id="scanpick">
+    <div class="row">
+      <div><h2 data-i18n="scanpick_title">Vizsgálatok</h2><p class="sub" data-i18n="scanpick_help">Indítsd mindet egyszerre, vagy lentebb válassz egyenként. A SEO külön fut, nem része a „Mindet"-nek.</p></div>
+      <button class="btn primary go" id="allgo" type="button" data-i18n="all_go">Mindet (SEO nélkül)</button>
+    </div>
+  </section>
+
+  <section class="hide" id="results">
+    <div class="toolbar">
+      <input type="text" id="filter" class="filter input" data-i18n-ph="filter_ph" placeholder="Szűrés…">
+      <div class="pills" id="livefilter" role="group">
+        <button type="button" data-v="all" class="on" data-i18n="f_all">Mind</button>
+        <button type="button" data-v="live" data-i18n="f_live">Élő</button>
+        <button type="button" data-v="exposed" data-i18n="f_exposed">Kitett</button>
+        <button type="button" data-v="cve" data-i18n="f_cve">CVE</button>
+        <button type="button" data-v="svc" data-i18n="f_svc">Eszközök</button>
+        <button type="button" data-v="takeover" data-i18n="f_takeover">Takeover</button>
+        <button type="button" data-v="sub" data-i18n="f_sub">Aldomén</button>
+        <button type="button" data-v="dead" data-i18n="f_dead">Nem élő</button>
+      </div>
+      <div class="actions">
+        <a class="btn" id="graphlink" href="#" data-i18n="col_graph">Gráf</a>
+        <a class="btn" id="md" href="#" data-i18n="col_md">Jelentés</a>
+        <a class="btn" id="xlsx" href="#" data-i18n="col_xlsx">XLSX</a>
+        <a class="btn" id="csv" href="#" data-i18n="col_export_csv">CSV</a>
+        <a class="btn" id="json" href="#" data-i18n="col_export_json">JSON</a>
+      </div>
+    </div>
+    <div class="list" id="hostlist"></div>
+  </section>
+
   <section class="card hide" id="activecard">
     <div class="row">
       <div><h2 data-i18n="active_title">Aktív vizsgálat</h2><p class="sub" data-i18n="active_help">A felderített hostok megérintése…</p></div>
@@ -200,30 +231,6 @@
       <div class="progmeta"><span><span class="stage-chip" id="sstage">–</span> · <span id="sprogtxt">0 / 0</span></span></div>
       <div class="progbar" id="sprogbar"><i></i></div>
     </div>
-  </section>
-
-  <section class="hide" id="results">
-    <div class="toolbar">
-      <input type="text" id="filter" class="filter input" data-i18n-ph="filter_ph" placeholder="Szűrés…">
-      <div class="pills" id="livefilter" role="group">
-        <button type="button" data-v="all" class="on" data-i18n="f_all">Mind</button>
-        <button type="button" data-v="live" data-i18n="f_live">Élő</button>
-        <button type="button" data-v="exposed" data-i18n="f_exposed">Kitett</button>
-        <button type="button" data-v="cve" data-i18n="f_cve">CVE</button>
-        <button type="button" data-v="svc" data-i18n="f_svc">Eszközök</button>
-        <button type="button" data-v="takeover" data-i18n="f_takeover">Takeover</button>
-        <button type="button" data-v="sub" data-i18n="f_sub">Aldomén</button>
-        <button type="button" data-v="dead" data-i18n="f_dead">Nem élő</button>
-      </div>
-      <div class="actions">
-        <a class="btn" id="graphlink" href="#" data-i18n="col_graph">Gráf</a>
-        <a class="btn" id="md" href="#" data-i18n="col_md">Jelentés</a>
-        <a class="btn" id="xlsx" href="#" data-i18n="col_xlsx">XLSX</a>
-        <a class="btn" id="csv" href="#" data-i18n="col_export_csv">CSV</a>
-        <a class="btn" id="json" href="#" data-i18n="col_export_json">JSON</a>
-      </div>
-    </div>
-    <div class="list" id="hostlist"></div>
   </section>
 
   <section class="card">

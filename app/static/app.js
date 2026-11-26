@@ -246,6 +246,29 @@ async function startSvc() {   // kitett AI/low-code/monitoring eszközök felder
   } catch (e) { alert(t("err_start")); $("#svcgo").disabled = false; }
 }
 
+// „Mindet (SEO nélkül)” — a vizsgálatok egyszerre indíthatók, mert a fázis-végpontok csak a saját
+// fázisukra adnak 409-et (nincs kereszt-zár). A SEO szándékosan kimarad: külön, szűk scope-ú audit.
+async function startAll() {
+  if (!current) return;
+  const s = scan, busy = k => ["queued", "running"].includes(s[k]);
+  $("#allgo").disabled = true;
+  const jobs = [];
+  if (!busy("active_status")) jobs.push(startActive());
+  if (!busy("cve_status")) jobs.push(startCve());
+  if (!busy("svc_status")) jobs.push(startSvc());
+  if (s.opts && s.opts.target_kind === "hostlist" && !busy("sub_status")) jobs.push(startSubdomains());
+  await Promise.allSettled(jobs);
+}
+
+// A vizsgálat-választó sáv: a passzív után jelenik meg; a „Mindet” gomb fut közben letiltva.
+function renderScanpick(s) {
+  const passiveDone = ["done", "error", "canceled"].includes(s.status);
+  $("#scanpick").classList.toggle("hide", !passiveDone || s.status === "error");
+  const anyRun = ["active_status", "cve_status", "svc_status", "sub_status"].some(k => ["queued", "running"].includes(s[k]));
+  $("#allgo").disabled = anyRun;
+  $("#allgo").textContent = anyRun ? t("all_running") : t("all_go");
+}
+
 async function startSubdomains() {   // domain-leltár: aldomén-felderítés az összes betöltött domainre
   if (!current) return;
   $("#subgo").disabled = true;
@@ -266,7 +289,7 @@ async function tick() {
   try { s = await (await fetch(`/api/scan/${current}`, {cache: "no-store"})).json(); }
   catch (e) { return; }
   scan = s; hosts = s.hosts || [];
-  renderProgress(s); renderActive(s); renderCve(s); renderSvc(s); renderSeo(s); renderSubdomains(s); renderStats(); renderPosture(s); renderHosts();
+  renderProgress(s); renderActive(s); renderCve(s); renderSvc(s); renderSeo(s); renderSubdomains(s); renderScanpick(s); renderStats(); renderPosture(s); renderHosts();
   $("#md").href = `/report?id=${current}&lang=${LANG}`;   // nyomtatható PDF-jelentés (a UI nyelvén)
   $("#md").target = "_blank";
   $("#xlsx").href = `/api/export/${current}.xlsx`;
@@ -686,7 +709,7 @@ function markHistory() {
 
 function resetView() {
   current = null; stopPoll();
-  ["results", "stats", "ctxbar", "posture", "activecard", "cvecard", "svccard", "seocard", "subcard"].forEach(id => $("#" + id).classList.add("hide"));
+  ["results", "stats", "ctxbar", "posture", "scanpick", "activecard", "cvecard", "svccard", "seocard", "subcard"].forEach(id => $("#" + id).classList.add("hide"));
   markHistory();
 }
 
@@ -698,6 +721,7 @@ $("#importbtn").addEventListener("click", () => $("#importfile").click());
 $("#importfile").addEventListener("change", onImportFile);
 $("#orgsearch").addEventListener("click", orgSearch);
 $("#orgq").addEventListener("keydown", e => { if (e.key === "Enter") orgSearch(); });
+$("#allgo").addEventListener("click", startAll);
 $("#activego").addEventListener("click", startActive);
 $("#cvego").addEventListener("click", startCve);
 $("#svcgo").addEventListener("click", startSvc);
