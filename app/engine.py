@@ -563,7 +563,7 @@ class Engine:
                     nonlocal done
                     async with sem, self._gsem:
                         self._check()
-                        findings = await self._cve_host(client, host)
+                        findings = await self._cve_host(client, host, d)
                     d["cve"] = findings
                     self.db.upsert_host(self.id, host, d)
                     done += 1
@@ -579,7 +579,7 @@ class Engine:
         finally:
             _ENGINES.pop(self.id, None)
 
-    async def _cve_host(self, client, host: str) -> list[dict]:
+    async def _cve_host(self, client, host: str, d: dict | None = None) -> list[dict]:
         powered, server = "", ""
         for scheme in ("https", "http"):
             try:
@@ -593,6 +593,10 @@ class Engine:
         findings = cvescan.version_cves(server, powered)        # A) verzió-alapú
         try:
             findings += await cvescan.fingerprint_cves(client, host)   # B) ujjlenyomat-alapú
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            findings += cvescan.banner_cves((d or {}).get("ports") or [])   # C) nem-webes banner-alapú
         except Exception:  # noqa: BLE001
             pass
         return findings

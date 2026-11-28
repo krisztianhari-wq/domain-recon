@@ -120,5 +120,34 @@ class AsyncProbeTest(unittest.TestCase):
         self.assertEqual(asyncio.run(run({"version": "10.3.26"})), set())
 
 
+class BannerTest(unittest.TestCase):
+    """C) nem-webes, banner-alapú CVE-k (OpenSSH / Erlang SSH / Exim)."""
+
+    def _ids(self, *banners):
+        return _ids(c.banner_cves([{"port": 22, "banner": b} for b in banners]))
+
+    def test_openssh_regresshion_in_range(self):
+        self.assertIn("openssh-regresshion", self._ids("SSH-2.0-OpenSSH_9.6p1 Ubuntu-3ubuntu13.5"))
+        self.assertIn("openssh-regresshion", self._ids("SSH-2.0-OpenSSH_8.5p1"))   # alsó határ
+        self.assertIn("openssh-regresshion", self._ids("SSH-2.0-OpenSSH_9.7p1"))   # felső határ (bezárólag)
+
+    def test_openssh_patched_or_old(self):
+        self.assertEqual(self._ids("SSH-2.0-OpenSSH_9.8p1"), set())                 # javított
+        self.assertEqual(self._ids("SSH-2.0-OpenSSH_10.0p1"), set())               # újabb
+        self.assertEqual(self._ids("SSH-2.0-OpenSSH_8.4p1"), set())                # régebbi, tartomány alatt
+
+    def test_erlang_ssh_presence(self):
+        self.assertIn("erlang-ssh-rce", self._ids("SSH-2.0-Erlang/5.2.9"))
+
+    def test_exim_banner(self):
+        out = c.banner_cves([{"port": 25, "banner": "220 mail.example.com ESMTP Exim 4.94 Mon, 01 Jan 2024"}])
+        self.assertIn("exim-ext-oob", _ids(out))
+        self.assertEqual(_ids(c.banner_cves([{"port": 25, "banner": "220 ESMTP Exim 4.96.1"}])), set())
+        self.assertEqual(_ids(c.banner_cves([{"port": 25, "banner": "220 ESMTP Exim 4.98"}])), set())
+
+    def test_no_banner_or_http_port(self):
+        self.assertEqual(_ids(c.banner_cves([{"port": 443}, {"port": 80, "banner": ""}])), set())
+
+
 if __name__ == "__main__":
     unittest.main()

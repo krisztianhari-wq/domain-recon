@@ -1,7 +1,9 @@
 """Ismert kritikus CVE-k felismerése a domain-recon CVE-fázisához – KÉT csoport, külön reportolva:
 
-  method="version":     a `Server` / `X-Powered-By` fejlécből kiolvasott termék+verzió összevetése
-                        ismert sebezhető tartományokkal (PHP, Apache httpd). Nem kihasználás.
+  method="version":     verzió-alapú egyezés ismert sebezhető tartományokkal. Két forrásból:
+                        (A) a `Server` / `X-Powered-By` HTTP-fejlécből (PHP, Apache httpd); és
+                        (C) a nem-webes szolgáltatás-bannerekből (SSH/SMTP: OpenSSH, Erlang/OTP SSH,
+                        Exim), amelyeket az aktív fázis grab_banner-je kapott el. Nem kihasználás.
   method="fingerprint": kíméletes, GET-only ujjlenyomat (pl. Confluence verzió a HTML-ből) →
                         ismert kritikus CVE. Szintén nem kihasználás; a verzióegyezés nem bizonyít
                         kihasználhatóságot.
@@ -302,6 +304,73 @@ async def fingerprint_cves(client, host: str, ports: list[int] | None = None) ->
     for probe in (_owncloud, _jira):         # célzott, kíméletes verzió-végpontok
         try:
             await probe(client, root_base, out)
+        except Exception:  # noqa: BLE001
+            pass
+    return out
+
+
+# ---------------- C) Nem-webes, banner-alapú (verzió, banner-grab only) ----------------
+# Az AKTÍV fázis által elkapott szolgáltatás-bannerekből (fingerprint.grab_banner: SSH/SMTP magától
+# köszön) olvassuk a terméket+verziót → ismert, INTERNETRŐL vizsgálható CVE. Nem kihasználás; a
+# verzióegyezés nem bizonyít kihasználhatóságot (a disztró-backport verzióemelés nélkül is javíthat).
+# A találatok method="version"-nel mennek (verzió-alapúak), így a meglévő riport/UI változtatás nélkül mutatja.
+_SSH_OPENSSH_RE = re.compile(r"OpenSSH[_/](\d+)\.(\d+)(?:p(\d+))?", re.I)
+_SSH_ERLANG_RE = re.compile(r"SSH-[0-9.]+-Erlang", re.I)
+_EXIM_RE = re.compile(r"\bExim\s+(\d+)\.(\d+)(?:\.(\d+))?", re.I)
+
+
+def _banner_findings_one(banner: str, port, out: list) -> None:
+    b = banner or ""
+    # OpenSSH regreSSHion – CVE-2024-6387 (hitelesítés nélküli RCE). Sebezhető 8.5p1–9.7p1 (bezárólag),
+    # javítva 9.8p1; glibc-Linux. Verzió-összevetés (major, minor, portable): 8.5p1=(8,5,1) .. 9.7p1=(9,7,1).
+    m = _SSH_OPENSSH_RE.search(b)
+    if m:
+        t = (int(m.group(1)), int(m.group(2)), int(m.group(3) or 0))
+        vs = f"{m.group(1)}.{m.group(2)}" + (f"p{m.group(3)}" if m.group(3) else "")
+        if (8, 5, 1) <= t <= (9, 7, 1):
+            out.append(_f("openssh-regresshion", "CVE-2024-6387", "medium",
+                          "OpenSSH regreSSHion (hitelesítés nélküli RCE)",
+                          "OpenSSH regreSSHion (unauthenticated RCE)",
+                          f"OpenSSH {vs} (SSH banner, {port}. port) — sebezhető 8.5p1–9.7p1, javítva 9.8p1; "
+                          "glibc-Linux, a disztró-backport verzióemelés nélkül is javíthatta (ellenőrizd)",
+                          f"OpenSSH {vs} (SSH banner, port {port}) — vulnerable 8.5p1–9.7p1, fixed 9.8p1; "
+                          "glibc Linux, distro backports may fix without a version bump (verify)", "version"))
+    elif _SSH_ERLANG_RE.search(b):
+        # Erlang/OTP SSH – CVE-2025-32433 (CVSS 10, CISA KEV, aktívan kihasználva). A banner az SSH-app
+        # verzióját adja, NEM az OTP-verziót → jelenlét-alapú „ellenőrizd" jelzés, nem pontos verzióegyezés.
+        out.append(_f("erlang-ssh-rce", "CVE-2025-32433", "high",
+                      "Erlang/OTP SSH — hitelesítés nélküli RCE (KEV)",
+                      "Erlang/OTP SSH — unauthenticated RCE (KEV)",
+                      f"Erlang/OTP SSH szerver ({port}. port) — a banner nem adja az OTP-verziót; ellenőrizd a "
+                      "CVE-2025-32433 ellen (javítva OTP-25.3.2.20 / 26.2.5.11 / 27.3.3; aktívan kihasználva, CISA KEV)",
+                      f"Erlang/OTP SSH server (port {port}) — banner does not reveal the OTP version; check against "
+                      "CVE-2025-32433 (fixed OTP-25.3.2.20 / 26.2.5.11 / 27.3.3; actively exploited, CISA KEV)", "version"))
+    # Exim – CVE-2023-42115 (OOB write az EXTERNAL authenticatorban, RCE). Sebezhető < 4.96.1, csak ha az
+    # EXTERNAL authenticator aktív. A verzió az SMTP-bannerből ("220 host ESMTP Exim 4.xx …").
+    m = _EXIM_RE.search(b)
+    if m:
+        ev = (int(m.group(1)), int(m.group(2)), int(m.group(3) or 0))
+        vs = f"{m.group(1)}.{m.group(2)}" + (f".{m.group(3)}" if m.group(3) else "")
+        if ev < (4, 96, 1):
+            out.append(_f("exim-ext-oob", "CVE-2023-42115", "medium",
+                          "Exim — OOB write az EXTERNAL authenticatorban (RCE)",
+                          "Exim — OOB write in the EXTERNAL authenticator (RCE)",
+                          f"Exim {vs} (SMTP banner, {port}. port) — sebezhető < 4.96.1, csak ha az EXTERNAL "
+                          "authenticator aktív; a disztró-backport verzióemelés nélkül is javíthatta (ellenőrizd)",
+                          f"Exim {vs} (SMTP banner, port {port}) — vulnerable < 4.96.1, only if the EXTERNAL "
+                          "authenticator is enabled; distro backports may fix without a version bump (verify)", "version"))
+
+
+def banner_cves(ports: list) -> list:
+    """C) Nem-webes, banner-alapú ismert CVE-k (method=version). Az aktív fázis szolgáltatás-bannereiből
+    (SSH/SMTP) olvassa a verziót → ismert, internetről vizsgálható CVE. Banner-grab only, NEM kihasználás."""
+    out: list = []
+    for p in ports or []:
+        b = p.get("banner")
+        if not b:
+            continue
+        try:
+            _banner_findings_one(b, p.get("port") or 0, out)
         except Exception:  # noqa: BLE001
             pass
     return out
